@@ -1,6 +1,9 @@
 <?php
-require_once __DIR__ . '/version.php';
-require __DIR__.'/m7-bootstrap.php';
+declare(strict_types=1);
+/* Edit page (M7A write path, kept): only new, unconverted/enquiry-generated records are editable; changes are audited. */
+require __DIR__ . '/inc/bootstrap.php';
+cm_require_login();
+$pdo = cm_pdo();
 $id=m7id();if (!$id) {http_response_code(400);exit('Invalid task.');}
 $error='';
 try {
@@ -39,4 +42,20 @@ $s=$pdo->prepare('SELECT t.*,c.name AS client_name FROM tasks t LEFT JOIN client
 if(!$t){http_response_code(404);exit('Task not found.');}
 $editable=$t['source_system']==='enquiry' && $t['enquiry_id']!==null && $t['legacy_record']===null;
 $required=$t['required_by'] ? substr($t['required_by'],0,10) : '';
-?><!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Task #<?=m7h($id)?> · Cloake</title><link rel="stylesheet" href="assets/app.css"><style>main.m7{max-width:740px;margin:2rem auto;padding:0 1rem 5rem}.m7 label{display:block;margin:1rem 0 .3rem;font-weight:600}.m7 input,.m7 textarea,.m7 select{display:block;width:100%;max-width:100%;padding:.7rem;border:1px solid #b6bcb9;border-radius:7px;background:white;color:#172720}.m7 textarea{min-height:100px}.m7 button{margin-top:1.5rem;padding:.85rem 1.5rem;border-radius:8px;background:#263e34;color:white;border:0}.m7 .error{color:#a32}.m7 .ok{color:#176338}</style></head><body><main class="m7"><p><a href="index.php?page=tasks">← Tasks</a> · <a href="index.php?page=task&amp;id=<?=m7h($id)?>">Task details</a><?php if($t['enquiry_id']):?> · <a href="convert-enquiry.php?id=<?=m7h($t['enquiry_id'])?>">Original enquiry</a><?php endif;?></p><p class="eyebrow">PRIVATE STAGING</p><h1>Task #<?=m7h($id)?></h1><p><strong>Client:</strong> <?=m7h($t['client_name'])?></p><?php if($error):?><p class="error" role="alert"><?=m7h($error)?></p><?php endif;?><?php if(isset($_GET['saved'])):?><p class="ok">Saved successfully.</p><?php endif;?><?php if(!$editable):?><p>This imported or historical task remains read-only. No fields have been changed.</p><?php else:?><form method="post"><input type="hidden" name="id" value="<?=m7h($id)?>"><input type="hidden" name="csrf" value="<?=m7h(m7csrf())?>"><label for="title">Task title</label><input id="title" name="title" maxlength="255" required value="<?=m7h($t['title'])?>"><label for="instructions">Instructions</label><textarea id="instructions" name="instructions"><?=m7h($t['instructions'])?></textarea><label for="status">Status</label><select id="status" name="status"><?php foreach(['open'=>'Open','in_progress'=>'In progress','waiting'=>'Waiting','completed'=>'Completed'] as $v=>$label):?><option value="<?=m7h($v)?>" <?=$t['status']===$v?'selected':''?>><?=m7h($label)?></option><?php endforeach;?></select><label for="priority">Priority</label><select id="priority" name="priority"><?php foreach(['low','normal','high','urgent'] as $v):?><option value="<?=m7h($v)?>" <?=$t['priority']===$v?'selected':''?>><?=ucfirst($v)?></option><?php endforeach;?></select><label for="required">Required by</label><input id="required" name="required_by" type="date" value="<?=m7h($required)?>"><details><summary>Additional notes</summary><label for="notes">Notes</label><textarea id="notes" name="notes"><?=m7h($t['notes'])?></textarea></details><button type="submit">Save task</button></form><?php endif;?></main><div class="release-indicator" aria-label="Application version">v<?=htmlspecialchars(CLOAKE_VERSION, ENT_QUOTES, 'UTF-8')?> <span>· build <?=htmlspecialchars(CLOAKE_BUILD, ENT_QUOTES, 'UTF-8')?></span></div></body></html>
+cm_page_start('Edit task #' . $id, 'tasks', ['back' => [route('task', ['id' => $id]), 'Task details'], 'bodyClass' => 'form-page']);
+?>
+<p><strong>Client:</strong> <?=m7h($t['client_name'] ?? 'Unassigned')?><?php if ($t['enquiry_id']): ?> · <a href="convert-enquiry.php?id=<?=m7h($t['enquiry_id'])?>">Original enquiry #<?=(int)$t['enquiry_id']?></a><?php endif; ?></p>
+<?php if ($error): ?><div class="alert" role="alert"><?=m7h($error)?></div><?php endif; ?>
+<?php if (isset($_GET['saved'])): ?><div class="success" role="status"><strong>Saved.</strong> <a href="<?=h(route('task', ['id' => $id]))?>">Back to task</a></div><?php endif; ?>
+<?php if (!$editable): ?><div class="panel"><p>This imported or historical task remains read-only. No fields have been changed.</p></div>
+<?php else: ?>
+<form method="post" class="form"><input type="hidden" name="id" value="<?=m7h($id)?>"><input type="hidden" name="csrf" value="<?=m7h(m7csrf())?>">
+<div class="field"><label for="title">Task title</label><input id="title" name="title" maxlength="255" required value="<?=m7h($t['title'])?>"></div>
+<div class="field"><label for="instructions">Instructions</label><textarea id="instructions" name="instructions"><?=m7h($t['instructions'])?></textarea></div>
+<div class="pair"><div class="field"><label for="status">Status</label><select id="status" name="status"><?php foreach (['open' => 'Open', 'in_progress' => 'In progress', 'waiting' => 'Waiting', 'completed' => 'Completed'] as $v => $label): ?><option value="<?=m7h($v)?>"<?=$t['status'] === $v ? ' selected' : ''?>><?=m7h($label)?></option><?php endforeach; ?></select></div>
+<div class="field"><label for="priority">Priority</label><select id="priority" name="priority"><?php foreach (['low', 'normal', 'high', 'urgent'] as $v): ?><option value="<?=m7h($v)?>"<?=$t['priority'] === $v ? ' selected' : ''?>><?=ucfirst($v)?></option><?php endforeach; ?></select></div></div>
+<div class="field"><label for="required">Required by</label><input id="required" name="required_by" type="date" value="<?=m7h($required)?>"></div>
+<details<?=$t['notes'] ? ' open' : ''?>><summary>Additional notes</summary><div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes"><?=m7h($t['notes'])?></textarea></div></details>
+<button type="submit" class="save">Save task</button></form>
+<?php endif; ?>
+<?php cm_page_end('tasks');

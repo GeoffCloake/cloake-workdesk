@@ -1,0 +1,48 @@
+<?php
+declare(strict_types=1);
+defined('CLOAKE_CONFIG_FILE') || exit;
+/*
+ * Clients: instant finder (JS) with a full server-side search fallback that
+ * matches client name, business name, original ID, contact name, email and phone.
+ */
+$show = in_array($_GET['show'] ?? '', ['active', 'archive', 'all'], true) ? $_GET['show'] : ($q !== '' ? 'all' : 'active');
+$where = []; $args = [];
+if ($q !== '') {
+    $like = '%' . $q . '%';
+    $digits = preg_replace('/\D+/', '', $q) ?? '';
+    $where[] = "(c.name LIKE ? OR c.source_id LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.business_name')) LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.email')) LIKE ?
+        OR EXISTS (SELECT 1 FROM contacts k WHERE k.client_id=c.id AND (k.display_name LIKE ? OR k.email LIKE ?" . (strlen($digits) >= 4 ? " OR REPLACE(REPLACE(REPLACE(k.phone,' ',''),'-',''),'+','') LIKE ?" : '') . ")))";
+    array_push($args, $like, $like, $like, $like, $like, $like);
+    if (strlen($digits) >= 4) $args[] = '%' . $digits . '%';
+}
+if ($show === 'active') $where[] = "LOWER(COALESCE(c.status,''))<>'archive'";
+if ($show === 'archive') $where[] = "LOWER(COALESCE(c.status,''))='archive'";
+$sql = "SELECT c.id,c.name,c.status,c.source_id,
+    JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.business_name')) business_name,
+    COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.physical_city_town')),''),NULLIF(JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.postal_city_town')),'')) town,
+    (SELECT COUNT(*) FROM tasks t WHERE t.client_id=c.id AND NOT (" . cm_closed_status_sql('t.status') . ") AND t.completed_at IS NULL) open_tasks
+  FROM clients c" . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY c.name LIMIT 400';
+$rows = allRows($pdo, $sql, $args);
+$clean = fn($v) => ($v === null || $v === 'null') ? '' : trim((string)$v);
+?>
+<section class="finder-panel">
+  <form class="finder" method="get" action="index.php" role="search" data-finder>
+    <input type="hidden" name="page" value="clients"><input type="hidden" name="show" value="<?=h($show)?>">
+    <label for="finder-q" class="visually-hidden">Find a client</label>
+    <div class="finder-row"><input id="finder-q" name="q" type="search" value="<?=h($q)?>" placeholder="Name, contact, email or phone" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" data-finder-input data-finder-autofocus aria-controls="finder-results" aria-autocomplete="list"><button type="submit" class="finder-go">Search</button></div>
+    <div id="finder-results" class="finder-results" role="listbox" aria-label="Matching clients" data-finder-results hidden></div>
+    <div class="recent-clients" data-recent-clients hidden><span class="small muted">Recent</span></div>
+  </form>
+</section>
+<nav class="chips" aria-label="Client status">
+<?php foreach (['active' => 'Active', 'archive' => 'Archived', 'all' => 'All'] as $k => $v): ?>
+  <a class="chip<?=$show === $k ? ' on' : ''?>" href="<?=h(route('clients', array_filter(['show' => $k, 'q' => $q])))?>"<?=$show === $k ? ' aria-current="true"' : ''?>><?=h($v)?></a>
+<?php endforeach; ?>
+</nav>
+<p class="small muted" data-testid="client-count"><?=count($rows)?> <?=count($rows) === 1 ? 'client' : 'clients'?><?=$q !== '' ? ' matching “' . h($q) . '”' : ''?>.</p>
+<?php if (!$rows): ?><p class="emptyline">No clients match. Try part of a name, a contact's name, an email address or the last digits of a phone number.</p><?php endif; ?>
+<div class="stack client-list">
+<?php foreach ($rows as $r): $sub = array_filter([$clean($r['business_name']) !== $r['name'] ? $clean($r['business_name']) : '', $clean($r['town'])]); ?>
+  <a class="record" href="<?=h(route('client', ['id' => $r['id']]))?>"><span><strong><?=h($r['name'])?><?php if (strtolower((string)$r['status']) === 'archive'): ?> <em class="tag">Archived</em><?php endif; ?></strong><small><?=h($sub ? implode(' · ', $sub) : 'Legacy ID ' . $r['source_id'])?></small></span><span class="end"><?=(int)$r['open_tasks'] ? (int)$r['open_tasks'] . ' open' : ''?> ›</span></a>
+<?php endforeach; ?>
+</div>

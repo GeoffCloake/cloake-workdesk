@@ -1,6 +1,9 @@
 <?php
-require_once __DIR__ . '/version.php';
-require __DIR__.'/m7-bootstrap.php';
+declare(strict_types=1);
+/* Edit page (M7A write path, kept): only new, unconverted/enquiry-generated records are editable; changes are audited. */
+require __DIR__ . '/inc/bootstrap.php';
+cm_require_login();
+$pdo = cm_pdo();
 $id=m7id(); if (!$id) {http_response_code(400);exit('Invalid enquiry.');}
 $error=''; $saved=false;
 try {
@@ -42,4 +45,19 @@ $s=$pdo->prepare('SELECT e.*,c.name AS client_name FROM enquiries e LEFT JOIN cl
 if (!$e) {http_response_code(404);exit('Enquiry not found.');}
 $s=$pdo->prepare('SELECT id FROM tasks WHERE enquiry_id=? LIMIT 1');$s->execute([$id]);$linked=$s->fetchColumn();
 $editable=($e['legacy_source_id']===null && $e['status']==='enquiry' && !$linked);
-?><!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Edit enquiry #<?=m7h($id)?> · Cloake</title><link rel="stylesheet" href="assets/app.css"><style>main.m7{max-width:740px;margin:2rem auto;padding:0 1rem 5rem}.m7 label{display:block;margin:1rem 0 .3rem;font-weight:600}.m7 input,.m7 textarea,.m7 select{display:block;width:100%;max-width:100%;padding:.7rem;border:1px solid #b6bcb9;border-radius:7px;background:white;color:#172720}.m7 textarea{min-height:100px}.m7 button{margin-top:1.5rem;padding:.85rem 1.5rem;border-radius:8px;background:#263e34;color:white;border:0}.m7 .panel{padding:1rem}.m7 .error{color:#a32}.m7 .ok{color:#176338}</style></head><body><main class="m7"><p><a href="index.php?page=enquiries">← Enquiries</a> · <a href="convert-enquiry.php?id=<?=m7h($id)?>">View / progress</a></p><p class="eyebrow">PRIVATE STAGING</p><h1>Enquiry #<?=m7h($id)?></h1><p><strong>Client:</strong> <?=m7h($e['client_name']??'Unassigned')?> · <strong>Status:</strong> <?=m7h($e['status'])?></p><?php if($error):?><p class="error" role="alert"><?=m7h($error)?></p><?php endif;?><?php if(isset($_GET['saved'])):?><p class="ok">Saved successfully.</p><?php endif;?><?php if(!$editable):?><div class="panel"><p>This enquiry is historical or has already been converted, so editing is disabled here.</p><?php if($linked):?><p><a href="index.php?page=task&amp;id=<?=m7h($linked)?>">View linked task #<?=m7h($linked)?></a></p><?php endif;?></div><?php else:?><form method="post"><input type="hidden" name="id" value="<?=m7h($id)?>"><input type="hidden" name="csrf" value="<?=m7h(m7csrf())?>"><label for="title">Title</label><input id="title" name="title" maxlength="255" required value="<?=m7h($e['title'])?>"><label for="details">Details</label><textarea id="details" name="details"><?=m7h($e['details'])?></textarea><label for="priority">Priority</label><select name="priority" id="priority"><?php foreach(['low','normal','high','urgent'] as $v):?><option value="<?=m7h($v)?>" <?=$e['priority']===$v?'selected':''?>><?=ucfirst($v)?></option><?php endforeach;?></select><label for="required">Required by</label><input id="required" type="date" name="required_by" value="<?=m7h($e['required_by'])?>"><details><summary>Next action and follow-up</summary><label for="next">Next action</label><textarea id="next" name="next_action"><?=m7h($e['next_action'])?></textarea><label for="due">Follow-up date</label><input id="due" type="date" name="next_action_due" value="<?=m7h($e['next_action_due'])?>"><label for="waiting">Waiting for</label><input id="waiting" name="waiting_for" maxlength="80" value="<?=m7h($e['waiting_for'])?>"></details><button type="submit">Save enquiry</button></form><?php endif;?></main><div class="release-indicator" aria-label="Application version">v<?=htmlspecialchars(CLOAKE_VERSION, ENT_QUOTES, 'UTF-8')?> <span>· build <?=htmlspecialchars(CLOAKE_BUILD, ENT_QUOTES, 'UTF-8')?></span></div></body></html>
+cm_page_start('Edit enquiry #' . $id, 'enquiries', ['back' => ['convert-enquiry.php?id=' . $id, 'Enquiry #' . $id], 'bodyClass' => 'form-page']);
+?>
+<p><strong>Client:</strong> <?=m7h($e['client_name'] ?? 'Unassigned')?> · <strong>Status:</strong> <?=m7h(cm_status_label($e['status']))?></p>
+<?php if ($error): ?><div class="alert" role="alert"><?=m7h($error)?></div><?php endif; ?>
+<?php if (isset($_GET['saved'])): ?><div class="success" role="status"><strong>Saved.</strong> <a href="convert-enquiry.php?id=<?=(int)$id?>">Back to enquiry</a></div><?php endif; ?>
+<?php if (!$editable): ?><div class="panel"><p>This enquiry is historical or has already been converted, so editing is disabled here.</p><?php if ($linked): ?><p><a href="<?=h(route('task', ['id' => $linked]))?>">View linked task #<?=m7h($linked)?></a></p><?php endif; ?></div>
+<?php else: ?>
+<form method="post" class="form"><input type="hidden" name="id" value="<?=m7h($id)?>"><input type="hidden" name="csrf" value="<?=m7h(m7csrf())?>">
+<div class="field"><label for="title">Title</label><input id="title" name="title" maxlength="255" required value="<?=m7h($e['title'])?>"></div>
+<div class="field"><label for="details">Details</label><textarea id="details" name="details"><?=m7h($e['details'])?></textarea></div>
+<div class="pair"><div class="field"><label for="priority">Priority</label><select name="priority" id="priority"><?php foreach (['low', 'normal', 'high', 'urgent'] as $v): ?><option value="<?=m7h($v)?>"<?=$e['priority'] === $v ? ' selected' : ''?>><?=ucfirst($v)?></option><?php endforeach; ?></select></div>
+<div class="field"><label for="required">Required by</label><input id="required" type="date" name="required_by" value="<?=m7h($e['required_by'])?>"></div></div>
+<details<?=($e['next_action'] || $e['next_action_due'] || $e['waiting_for']) ? ' open' : ''?>><summary>Next action and follow-up</summary><div class="field"><label for="next">Next action</label><textarea id="next" name="next_action"><?=m7h($e['next_action'])?></textarea></div><div class="pair"><div class="field"><label for="due">Follow-up date</label><input id="due" type="date" name="next_action_due" value="<?=m7h($e['next_action_due'])?>"></div><div class="field"><label for="waiting">Waiting for</label><input id="waiting" name="waiting_for" maxlength="80" value="<?=m7h($e['waiting_for'])?>"></div></div></details>
+<button type="submit" class="save">Save enquiry</button></form>
+<?php endif; ?>
+<?php cm_page_end('enquiries');

@@ -1,83 +1,69 @@
 <?php
 declare(strict_types=1);
-require_once __DIR__ . '/version.php';
-header('X-Content-Type-Options: nosniff');
-header('Referrer-Policy: no-referrer');
-header('X-Frame-Options: DENY');
-header('Cache-Control: no-store, private');
-header('Content-Security-Policy: default-src \'self\'; style-src \'self\'; script-src \'self\'; object-src \'none\'; base-uri \'none\'; form-action \'self\'');
-$configFile = '/home/cloakecrea/cloake-manager/private/config.php';
-if (!is_file($configFile)) { http_response_code(503); echo 'Staging setup incomplete. Install private/config.php outside the public folder.'; exit; }
-$cfg = require $configFile;
-if (!is_array($cfg) || empty($cfg['password_hash']) || empty($cfg['db_password'])) { http_response_code(503); exit('Configuration incomplete.'); }
-ini_set('session.use_strict_mode', '1');
-ini_set('session.cookie_httponly', '1');
-ini_set('session.cookie_secure', '1');
-ini_set('session.cookie_samesite', 'Strict');
-session_name('cloake_m4');
-session_start();
-function h($v): string {return htmlspecialchars((string)($v??''), ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
-function route(string $page, array $params=[]): string { return '?'.http_build_query(array_merge(['page'=>$page],$params)); }
-$loginError='';
-if ($_SERVER['REQUEST_METHOD']==='POST') {
- if (($_POST['action']??'')==='logout') { $_SESSION=[]; session_destroy(); header('Location: ./'); exit; }
- if (($_POST['action']??'')==='login') {
-  if (password_verify((string)($_POST['password']??''),$cfg['password_hash'])) {session_regenerate_id(true);$_SESSION['m4_authenticated']=true;header('Location: ./');exit;}
-  $loginError='Incorrect password.'; sleep(1);
- }
+/*
+ * Cloake Client & Services Manager — main router.
+ * Sign-in/out, then dispatches to one screen file in inc/pages/.
+ * Browsing screens use a READ ONLY database session; all writes happen in the
+ * dedicated form pages (add-work, add-enquiry, convert-enquiry, edit-*).
+ */
+require __DIR__ . '/inc/bootstrap.php';
+$cfg = cm_config();
+
+$loginError = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (($_POST['action'] ?? '') === 'logout') { $_SESSION = []; session_destroy(); header('Location: ./'); exit; }
+    if (($_POST['action'] ?? '') === 'login') {
+        if (password_verify((string)($_POST['password'] ?? ''), $cfg['password_hash'])) {
+            session_regenerate_id(true);
+            $_SESSION['m4_authenticated'] = true;
+            $next = (string)($_POST['next'] ?? '');
+            header('Location: ' . (preg_match('/^index\.php\?page=[a-z]+(&[a-z_]+=[A-Za-z0-9_%+.-]*)*$/', $next) ? $next : './'));
+            exit;
+        }
+        $loginError = 'Incorrect password.';
+        sleep(1);
+    }
 }
-if (empty($_SESSION['m4_authenticated'])) {http_response_code(401); ?>
-<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><meta charset="utf-8"><title>Cloake staging · Sign in</title><link rel="stylesheet" href="assets/app.css?v=<?=rawurlencode(CLOAKE_BUILD)?>"><div class="release-indicator" aria-label="Application version">v<?=htmlspecialchars(CLOAKE_VERSION, ENT_QUOTES, 'UTF-8')?> <span>· build <?=htmlspecialchars(CLOAKE_BUILD, ENT_QUOTES, 'UTF-8')?></span></div><main class="login"><div class="eyebrow">CLOAKE · PRIVATE STAGING</div><h1>Sign in</h1><p>Private staging workspace with controlled new-entry forms.</p><form method="post"><input type="hidden" name="action" value="login"><label for="pw">Access password</label><input id="pw" name="password" type="password" required autocomplete="current-password"><button type="submit">Sign in</button></form><?php if($loginError):?><p role="alert"><?=h($loginError)?></p><?php endif;?></main></html><?php exit; }
+
+if (!cm_is_authenticated()) {
+    http_response_code(401);
+    $next = isset($_GET['page']) ? 'index.php?' . http_build_query(array_intersect_key($_GET, array_flip(['page', 'id', 'q']))) : '';
+    ?><!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · Cloake Manager</title><link rel="stylesheet" href="<?=h(asset('app.css'))?>"></head>
+<body class="login-page"><main class="login"><div class="eyebrow">CLOAKE · PRIVATE STAGING</div><h1>Sign in</h1><p class="muted">Client &amp; Services Manager</p>
+<form method="post" action="index.php"><input type="hidden" name="action" value="login"><input type="hidden" name="next" value="<?=h($next)?>"><label for="pw">Access password</label><input id="pw" name="password" type="password" required autocomplete="current-password"><button type="submit">Sign in</button></form>
+<?php if ($loginError): ?><p class="form-error" role="alert"><?=h($loginError)?></p><?php endif; ?><p class="build-label login-version" data-testid="version"><?=h(cm_version_label())?></p></main></body></html>
+<?php exit;
+}
+
+$pdo = cm_pdo(true);
+$pages = [
+    'today' => ['Today', 'today'], 'clients' => ['Clients', 'clients'], 'client' => ['Client', 'clients'],
+    'tasks' => ['Tasks', 'tasks'], 'task' => ['Task', 'tasks'], 'work' => ['Work Log', 'work'],
+    'enquiries' => ['Enquiries', 'enquiries'], 'invoicing' => ['Pending Invoicing', 'invoicing'],
+    'items' => ['Account Items', 'items'], 'more' => ['More', 'more'], 'check' => ['Release check', 'check'],
+];
+$page = (string)($_GET['page'] ?? 'today');
+if (!isset($pages[$page])) $page = 'today';
+[$title, $section] = $pages[$page];
+$q = trim(mb_substr((string)($_GET['q'] ?? ''), 0, 100));
+$id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+$today = date('Y-m-d'); // Pacific/Auckland, set in bootstrap
+$scripts = [];
+
+// Screens may set $title/$pageOpt before output via a "prepare" step; keep it simple:
+// each screen file prints its own body and may append to $scripts.
+ob_start();
 try {
- $pdo = new PDO('mysql:host='.($cfg['db_host']??'localhost').';dbname='.($cfg['db_name']??'cloakecrea_manager_devt').';charset=utf8mb4', $cfg['db_user'], $cfg['db_password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false,PDO::MYSQL_ATTR_MULTI_STATEMENTS=>false]);
- $pdo->exec('SET SESSION TRANSACTION READ ONLY');
-} catch(Throwable $e) {error_log('M4 connection issue: '.$e->getMessage());http_response_code(503);exit('Database temporarily unavailable. Check private configuration.');}
-$page=(string)($_GET['page']??'today');
-$allowed=['today','clients','client','tasks','task','work','enquiries','invoicing','items','more'];
-if(!in_array($page,$allowed,true))$page='today';
-$q=trim(substr((string)($_GET['q']??''),0,100));
-$id=filter_var($_GET['id']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]) ?: 0;
-function allRows(PDO $pdo,string $sql,array $params=[]): array {$s=$pdo->prepare($sql);$s->execute($params);return $s->fetchAll();}
-function oneRow(PDO $pdo,string $sql,array $params=[]): ?array {$s=$pdo->prepare($sql);$s->execute($params);$r=$s->fetch();return $r?:null;}
-function niceDate($s): string {if(!$s||str_starts_with((string)$s,'0000-')) return '—';try{return (new DateTimeImmutable((string)$s))->format('j M Y');}catch(Throwable $e){return '—';}}
-function dur($s): string {if(!is_numeric($s))return '—';$x=(int)$s;return floor($x/3600).'h '.str_pad((string)floor(($x%3600)/60),2,'0',STR_PAD_LEFT).'m';}
-function legacy(?string $json): array {if(!$json)return [];return json_decode($json,true)?:[];}
-function legacyValue(array $row,string $field): string {$v=legacy($row['legacy_record']??null)[$field]??null;if(is_array($v))return implode(', ',array_map('strval',$v));return (string)($v??'');}
-$title=['today'=>'Today','clients'=>'Clients','client'=>'Client','tasks'=>'Tasks','task'=>'Task','work'=>'Work Log','enquiries'=>'Enquiries','invoicing'=>'Pending Invoicing','items'=>'Account Items','more'=>'More'][$page];
-?><!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f6f3"><title><?=h($title)?> · Cloake Workspace Staging</title><link rel="stylesheet" href="assets/app.css?v=<?=rawurlencode(CLOAKE_BUILD)?>"></head><body><div class="shell"><header class="top"><a class="brand" href="./"><span class="brand-mark">C</span><span>Cloake <small>Client & Services Manager · v<?=h(CLOAKE_VERSION)?></small></span></a><form method="post"><input type="hidden" name="action" value="logout"><button class="quiet" type="submit">Sign out</button></form></header><div class="layout"><aside class="side"><div class="eyebrow">WORKSPACE</div><?php foreach(['today'=>'Today','clients'=>'Clients','tasks'=>'Tasks','work'=>'Work Log','enquiries'=>'Enquiries','invoicing'=>'Invoicing','items'=>'Account Items'] as $k=>$v):?><a class="nav <?=($page===$k?'current':'')?>" href="<?=h(route($k))?>"><?=h($v)?></a><?php endforeach;?><p class="muted small">Imported records remain protected. Billing actions are disabled.</p></aside><main><div class="eyebrow">PRIVATE STAGING · CLIENT & SERVICES MANAGER</div><h1><?=h($title)?></h1><?php if($page==='work' || $page==='task'):?><p><a class="m5-add" href="add-work.php<?=($page==='task'?'?task_id='.(int)$id:'')?>">+ Log work</a></p><?php endif;?>
-<?php if($page==='today'):
-$due=allRows($pdo,"SELECT t.id,t.title,t.required_by,t.status,c.name client_name FROM tasks t LEFT JOIN clients c ON c.id=t.client_id WHERE t.required_by IS NOT NULL AND DATE(t.required_by)<=DATE_ADD(CURRENT_DATE(),INTERVAL 7 DAY) AND LOWER(TRIM(COALESCE(t.status,''))) NOT IN ('completed','complete','closed','cancelled','canceled','done') AND t.completed_at IS NULL ORDER BY t.required_by ASC,t.id DESC LIMIT 8");
-$follow=allRows($pdo,"SELECT e.id,e.title,e.next_action,e.next_action_due,e.waiting_for,c.name client_name FROM enquiries e LEFT JOIN clients c ON c.id=e.client_id WHERE e.next_action_due IS NOT NULL AND e.next_action_due<=DATE_ADD(CURRENT_DATE(),INTERVAL 7 DAY) AND e.status NOT IN ('task_created','closed','cancelled') ORDER BY e.next_action_due ASC,e.id DESC LIMIT 5");
-$recent=allRows($pdo,"SELECT w.id,w.details,w.work_date,w.started_at,w.duration_seconds,w.task_id,t.title task_title,c.name client_name FROM work_log w LEFT JOIN tasks t ON t.id=w.task_id LEFT JOIN clients c ON c.id=w.client_id WHERE w.source_system IS NULL OR w.source_system <> 'fabrik' ORDER BY w.id DESC LIMIT 5");
-$overdue=0; foreach($due as $t){if(substr((string)$t['required_by'],0,10)<date('Y-m-d'))$overdue++;}
-?><section class="home-actions" aria-label="Quick actions"><a class="home-primary" href="add-work.php">＋ Log work</a><a href="add-enquiry.php">＋ Enquiry</a><a href="<?=h(route('tasks'))?>">Find task</a></section>
-<section class="home-section"><div class="section-heading"><h2>Tasks needing attention</h2><a href="<?=h(route('tasks'))?>">All tasks ›</a></div><?php if($overdue):?><p class="attention-note"><?= (int)$overdue ?> overdue in this selection</p><?php endif;?><?php if(!$due):?><p class="emptyline">No tasks due within the next seven days in the current records.</p><?php else:?><div class="stack compact-list"><?php foreach($due as $t):?><a class="record" href="<?=h(route('task',['id'=>$t['id']]))?>"><span><strong><?=h($t['title'])?></strong><small><?=h($t['client_name']??'Unassigned')?></small></span><span class="end <?=substr((string)$t['required_by'],0,10)<date('Y-m-d')?'late':''?>"><?=h(niceDate($t['required_by']))?></span></a><?php endforeach;?></div><?php endif;?></section>
-<section class="home-section"><div class="section-heading"><h2>Enquiry follow-ups</h2><a href="<?=h(route('enquiries'))?>">Enquiries ›</a></div><?php if(!$follow):?><p class="emptyline">No scheduled enquiry follow-ups due in the next seven days.</p><?php else:?><div class="stack compact-list"><?php foreach($follow as $f):?><a class="record" href="convert-enquiry.php?id=<?=(int)$f['id']?>"><span><strong><?=h($f['title'])?></strong><small><?=h($f['client_name']??'Unassigned')?><?php if($f['next_action']):?> · <?=h(mb_strimwidth((string)$f['next_action'],0,70,'…'))?><?php endif;?></small></span><span class="end"><?=h(niceDate($f['next_action_due']))?></span></a><?php endforeach;?></div><?php endif;?></section>
-<section class="home-section"><div class="section-heading"><h2>Recent work</h2><a href="<?=h(route('work'))?>">Work Log ›</a></div><?php if(!$recent):?><p class="emptyline">No recent locally entered work.</p><?php else:?><div class="stack compact-list"><?php foreach($recent as $w):?><div class="record"><span><strong><?=h($w['details'])?></strong><small><?=h($w['client_name']??'Unallocated')?> · <?=h(dur($w['duration_seconds']))?></small></span><?php if($w['task_id']):?><a class="inline-action" href="<?=h(route('task',['id'=>$w['task_id']]))?>">Task ›</a><?php else:?><span class="end"><?=h(niceDate($w['work_date']??$w['started_at']))?></span><?php endif;?></div><?php endforeach;?></div><?php endif;?></section>
-<a class="home-billing" href="<?=h(route('invoicing'))?>"><span><strong>Billing review</strong><small>Check work and invoice evidence before billing</small></span><span>›</span></a>
-<?php elseif($page==='more'):?><p class="muted small">Other areas of the workspace</p><div class="more-list"><a href="<?=h(route('enquiries'))?>">Enquiries <span>›</span></a><a href="<?=h(route('invoicing'))?>">Pending Invoicing <span>›</span></a><a href="<?=h(route('items'))?>">Account Items <span>›</span></a><a href="<?=h(route('work'))?>">Work Log <span>›</span></a><a href="add-enquiry.php">Quick Enquiry <span>›</span></a></div>
-<?php elseif($page==='clients'):
-$sql='SELECT id,name,status,source_id FROM clients';$args=[];if($q!==''){$sql.=' WHERE name LIKE :q OR source_id LIKE :id';$args=['q'=>'%'.$q.'%','id'=>'%'.$q.'%'];}$sql.=' ORDER BY name LIMIT 100';$rows=allRows($pdo,$sql,$args);
-?><form class="search" method="get"><input type="hidden" name="page" value="clients"><input type="search" name="q" value="<?=h($q)?>" placeholder="Search client name or original ID"><button type="submit">Search</button></form><p class="muted small">Showing up to 100 clients. Search to narrow results.</p><div class="stack"><?php foreach($rows as $r):?><a class="record" href="<?=h(route('client',['id'=>$r['id']]))?>"><span><strong><?=h($r['name'])?></strong><small><?=h($r['status']??'—')?> · Legacy ID <?=h($r['source_id'])?></small></span><span>›</span></a><?php endforeach;?></div>
-<?php elseif($page==='client'):
-$c=oneRow($pdo,'SELECT * FROM clients WHERE id=?',[$id]);if(!$c):?><p>Client not found.</p><?php else:
-$contacts=allRows($pdo,'SELECT * FROM contacts WHERE client_id=? ORDER BY display_name LIMIT 200',[$id]);$tasks=allRows($pdo,'SELECT id,title,status,required_by,pricing FROM tasks WHERE client_id=? ORDER BY id DESC LIMIT 80',[$id]);$recent=allRows($pdo,'SELECT id,details,staff_key,started_at,duration_seconds,billable_seconds,billed_amount_ex_gst FROM work_log WHERE client_id=? ORDER BY id DESC LIMIT 35',[$id]);$raw=legacy($c['legacy_record']);
-?><a class="back" href="<?=h(route('clients'))?>">‹ Clients</a><h2><?=h($c['name'])?></h2><p class="muted">Legacy ID <?=h($c['source_id'])?> · <?=h($c['status'])?></p><div class="stats"><div class="stat"><span>Contacts</span><strong><?=count($contacts)?></strong></div><div class="stat"><span>Tasks shown</span><strong><?=count($tasks)?></strong></div></div><details><summary>Client details</summary><dl><?php foreach(['email'=>'Email','phone'=>'Phone','postal_address_1'=>'Postal address','postal_city_town'=>'Town','xero_contact'=>'Xero contact reference','notes'=>'Notes'] as $key=>$label):?><dt><?=h($label)?></dt><dd><?=h($raw[$key]??'—')?></dd><?php endforeach;?></dl></details><details><summary>Contacts (<?=count($contacts)?>)</summary><div class="stack"><?php foreach($contacts as $r):?><div class="record"><span><strong><?=h($r['display_name'])?></strong><small><?=h($r['email'])?> · <?=h($r['phone'])?></small><small><?=h(legacyValue($r,'contact_type'))?></small></span></div><?php endforeach;?></div></details><h2>Tasks</h2><div class="stack"><?php foreach($tasks as $r):?><a class="record" href="<?=h(route('task',['id'=>$r['id']]))?>"><span><strong><?=h($r['title'])?></strong><small><?=h($r['status'])?> · <?=h($r['pricing'])?></small></span><span class="end"><?=h(niceDate($r['required_by']))?> ›</span></a><?php endforeach;?></div><details><summary>Recent Work Log entries (<?=count($recent)?> shown)</summary><div class="stack"><?php foreach($recent as $r):?><div class="record"><span><strong><?=h($r['details']?:'Work entry')?></strong><small><?=h($r['staff_key'])?> · <?=h(niceDate($r['started_at']))?> · <?=h(dur($r['duration_seconds']))?> worked</small></span></div><?php endforeach;?></div></details><?php endif;
-elseif($page==='tasks'):
-$sql='SELECT t.id,t.title,t.source_id,t.status,t.required_by,c.name client_name FROM tasks t LEFT JOIN clients c ON c.id=t.client_id';$args=[];if($q!==''){$sql.=' WHERE t.title LIKE :q OR t.source_id LIKE :id OR c.name LIKE :client';$args=['q'=>'%'.$q.'%','id'=>'%'.$q.'%','client'=>'%'.$q.'%'];}$sql.=' ORDER BY t.id DESC LIMIT 100';$rows=allRows($pdo,$sql,$args);
-?><form class="search" method="get"><input type="hidden" name="page" value="tasks"><input type="search" name="q" value="<?=h($q)?>" placeholder="Search task, client or original ID"><button type="submit">Search</button></form><p class="muted small">Showing up to 100 tasks.</p><div class="stack"><?php foreach($rows as $r):?><a class="record" href="<?=h(route('task',['id'=>$r['id']]))?>"><span><strong><?=h($r['title'])?></strong><small><?=h($r['client_name']??'Unassigned')?> · <?=h($r['status'])?> · #<?=h($r['source_id'])?></small></span><span class="end">View details ›<small><?=h(niceDate($r['required_by']))?></small></span></a><?php endforeach;?></div>
-<?php elseif($page==='task'):
-$t=oneRow($pdo,'SELECT t.*,c.name client_name FROM tasks t LEFT JOIN clients c ON c.id=t.client_id WHERE t.id=?',[$id]);if(!$t):?><p>Task not found.</p><?php else:$entries=allRows($pdo,'SELECT id,details,staff_key,started_at,duration_seconds,billable_seconds,billed_amount_ex_gst FROM work_log WHERE task_id=? ORDER BY id DESC LIMIT 100',[$id]);$raw=legacy($t['legacy_record']);?><a class="back" href="<?=h(route('tasks'))?>">‹ Tasks</a><h2><?=h($t['title'])?></h2><?php if(($t['source_system']??'')==='enquiry' && !empty($t['enquiry_id']) && $t['legacy_record']===null):?><p class="actions"><a class="action-button" href="edit-task.php?id=<?=(int)$t['id']?>">Edit task</a></p><?php endif;?><?php if(!empty($t['enquiry_id'])):?><p><a href="convert-enquiry.php?id=<?=(int)$t['enquiry_id']?>">View original enquiry #<?=(int)$t['enquiry_id']?></a></p><?php endif;?><p class="muted"><?=h($t['client_name']??'Unassigned')?> · Original task #<?=h($t['source_id'])?></p><div class="stats"><div class="stat"><span>Status</span><strong class="smvalue"><?=h($t['status']??'—')?></strong></div><div class="stat"><span>Required by</span><strong class="smvalue"><?=h(niceDate($t['required_by']))?></strong></div></div><div class="panel"><h3>Instructions</h3><div class="prewrap"><?=h($t['instructions']?:'No instructions recorded')?></div></div><details><summary>Pricing & billing</summary><dl><?php foreach(['pricing'=>'Pricing','chargeable'=>'Chargeable','agreed_fee_ex_gst'=>'Original set/estimated value','legacy_billing_amount_ex_gst'=>'Legacy billing amount','billing_advised'=>'Billing advised','invoice_number'=>'Invoice number','invoice_reference'=>'Invoice reference','purchase_order_no'=>'Purchase order','job_number'=>'Job number'] as $key=>$label):?><dt><?=h($label)?></dt><dd><?=h($t[$key]??'—')?></dd><?php endforeach;?></dl><p class="muted small">Historical values only. No totals are recalculated here.</p></details><details><summary>Scheduling & administration</summary><dl><?php foreach(['received_at'=>'Received','completed_at'=>'Completed','priority'=>'Priority','estimate_minutes'=>'Estimate (minutes)'] as $key=>$label):?><dt><?=h($label)?></dt><dd><?=h($t[$key]??'—')?></dd><?php endforeach;?><?php foreach(['task_category'=>'Category','task_type'=>'Type','action_for'=>'Assigned staff','domains'=>'Domains','vetta_ticket_no'=>'Vetta ticket','costs'=>'Additional costs','invoice_details'=>'Invoice details','notes'=>'Original notes'] as $key=>$label):?><dt><?=h($label)?></dt><dd><?=h(legacyValue($t,$key)?:'—')?></dd><?php endforeach;?></dl></details><h2>Work Log <small><?=count($entries)?> entries shown</small></h2><div class="stack"><?php foreach($entries as $r):?><div class="record"><span><strong><?=h($r['details']?:'Work entry')?></strong><small><?=h($r['staff_key'])?> · <?=h(niceDate($r['started_at']))?> · <?=h(dur($r['duration_seconds']))?> worked · <?=h(dur($r['billable_seconds']))?> billable</small></span></div><?php endforeach;?></div><?php endif;
-elseif($page==='work'):
-$sql='SELECT w.id,w.source_id,w.details,w.staff_key,w.started_at,w.duration_seconds,w.billable_seconds,w.billed_amount_ex_gst,c.name client_name,t.title task_title FROM work_log w LEFT JOIN clients c ON c.id=w.client_id LEFT JOIN tasks t ON t.id=w.task_id';$args=[];if($q!==''){$sql.=' WHERE w.details LIKE :q OR c.name LIKE :client OR t.title LIKE :task OR w.source_id LIKE :id';$args=['q'=>'%'.$q.'%','client'=>'%'.$q.'%','task'=>'%'.$q.'%','id'=>'%'.$q.'%'];}$sql.=' ORDER BY w.id DESC LIMIT 100';$rows=allRows($pdo,$sql,$args);
-?><form class="search" method="get"><input type="hidden" name="page" value="work"><input type="search" name="q" value="<?=h($q)?>" placeholder="Search work, client or task"><button type="submit">Search</button></form><p class="muted small">Showing up to 100 records. A zero duration may indicate missing legacy data, not zero work.</p><div class="stack"><?php foreach($rows as $r):?><details class="workitem"><summary><strong><?=h($r['details']?:'Work entry')?></strong><small><?=h($r['client_name']??'Unassigned')?> · <?=h($r['staff_key'])?> · <?=h(dur($r['duration_seconds']))?></small></summary><dl><dt>Original ID</dt><dd><?=h($r['source_id'])?></dd><dt>Task</dt><dd><?=h($r['task_title']??'Not linked')?></dd><dt>Worked</dt><dd><?=h(dur($r['duration_seconds']))?></dd><dt>Billable</dt><dd><?=h(dur($r['billable_seconds']))?></dd><dt>Legacy amount (ex GST)</dt><dd><?=h($r['billed_amount_ex_gst']??'—')?></dd></dl></details><?php endforeach;?></div>
-<?php elseif($page==='invoicing'):
-// Review-only. Do not infer that historical task billing is still outstanding.
-$billCounts=oneRow($pdo,"SELECT (SELECT COUNT(*) FROM tasks WHERE COALESCE(billing_advised,0)=1) flagged, (SELECT COUNT(*) FROM financial_documents) documents, (SELECT COUNT(*) FROM work_log WHERE billability='review') review_entries");
-$billingRows=allRows($pdo,"SELECT t.id,t.title,t.status,t.pricing,t.agreed_fee_ex_gst,t.legacy_billing_amount_ex_gst,t.billing_advised,t.invoice_number,t.invoice_reference,c.name client_name FROM tasks t LEFT JOIN clients c ON c.id=t.client_id WHERE t.billing_advised=1 OR (t.invoice_number IS NOT NULL AND t.invoice_number<>'') ORDER BY t.id DESC LIMIT 100");
-$drafts=allRows($pdo,"SELECT f.id,f.kind,f.local_status,f.xero_number,f.xero_status,f.created_at,c.name client_name FROM financial_documents f LEFT JOIN clients c ON c.id=f.client_id ORDER BY f.id DESC LIMIT 60");
-?><p class="lead">Review billing evidence before preparing any invoice. No Xero actions are enabled.</p><section class="stats"><div class="stat"><span>Legacy billing flags</span><strong><?=number_format((int)$billCounts['flagged'])?></strong></div><div class="stat"><span>Local financial documents</span><strong><?=number_format((int)$billCounts['documents'])?></strong></div><div class="stat"><span>Work entries for review</span><strong><?=number_format((int)$billCounts['review_entries'])?></strong></div></section><div class="notice"><strong>Not a confirmed outstanding-invoice list.</strong> Historical billing-advised flags and invoice references do not prove that an invoice is unpaid or still needs creating. Reconcile against Xero before acting.</div><h2>Billing history and flags <small>up to 100 tasks</small></h2><?php if(!$billingRows):?><p class="muted">No flagged task or invoice-reference records found.</p><?php else:?><div class="stack"><?php foreach($billingRows as $r):?><a class="record" href="<?=h(route('task',['id'=>$r['id']]))?>"><span><strong><?=h($r['title'])?></strong><small><?=h($r['client_name']??'Unassigned')?> · <?=h($r['status']??'—')?> · <?=h($r['pricing']??'—')?> · Billing advised: <?=!empty($r['billing_advised'])?'Yes':'No'?></small></span><span class="end">Invoice <?=h($r['invoice_number']?:'not recorded')?> ›</span></a><?php endforeach;?></div><?php endif;?><details><summary>Local quotes and invoices (<?=count($drafts)?> shown)</summary><?php if(!$drafts):?><p class="muted">No local financial documents have been recorded. Xero is not queried.</p><?php else:?><div class="stack"><?php foreach($drafts as $d):?><div class="record"><span><strong><?=h(ucfirst($d['kind']))?> #<?=(int)$d['id']?></strong><small><?=h($d['client_name']??'Unknown client')?> · <?=h($d['local_status'])?> · Xero <?=h($d['xero_status']??'not linked')?></small></span><span class="end"><?=h($d['xero_number']??'—')?></span></div><?php endforeach;?></div><?php endif;?></details>
-<?php elseif($page==='items'):
-$items=allRows($pdo,"SELECT id,code,description,pricing_mode,unit_price_ex_gst,xero_item_code,active FROM account_items ORDER BY active DESC,code LIMIT 200");$itemsCount=oneRow($pdo,'SELECT COUNT(*) total FROM account_items');
-?><p class="lead">Your account item catalogue, directly from the staging database.</p><section class="stats"><div class="stat"><span>Account items</span><strong><?=number_format((int)$itemsCount['total'])?></strong></div></section><div class="notice"><strong>Service renewals are not yet mapped.</strong> Account items are price/catalogue definitions; they do not establish which client has a renewal, or when it is due. No renewal notices or invoices are generated here.</div><?php if(!$items):?><div class="panel"><h3>No account items imported yet</h3><p class="muted">This is an empty catalogue, not a missing screen. Existing legacy account codes remain separately archived until a controlled mapping is approved.</p></div><?php else:?><form class="search" method="get"><input type="hidden" name="page" value="items"><input type="search" name="q" value="<?=h($q)?>" placeholder="Filter displayed items"><button type="submit">Filter</button></form><div class="stack"><?php foreach($items as $it):if($q!=='' && stripos($it['code'].' '.($it['description']??''),$q)===false)continue;?><div class="record"><span><strong><?=h($it['code'])?></strong><small><?=h($it['description']??'')?> · <?=h($it['pricing_mode'])?> · <?=!empty($it['active'])?'Active':'Inactive'?></small></span><span class="end"><?=($it['unit_price_ex_gst']!==null?'$'.h(number_format((float)$it['unit_price_ex_gst'],2)).' ex GST':'Price not set')?><?php if($it['xero_item_code']):?><small>Xero <?=h($it['xero_item_code'])?></small><?php endif;?></span></div><?php endforeach;?></div><?php endif;?>
-<?php else: $enq=allRows($pdo,'SELECT e.id,e.title,e.status,e.required_by,e.priority,c.name client_name, (SELECT MIN(t.id) FROM tasks t WHERE t.enquiry_id=e.id) linked_task_id FROM enquiries e LEFT JOIN clients c ON c.id=e.client_id ORDER BY e.id DESC LIMIT 50');?><p><a href="add-enquiry.php">+ Quick Enquiry</a></p><p class="muted small">New enquiries only. Legacy enquiry archive has not yet been mapped into this list.</p><div class="stack"><?php foreach($enq as $e):?><a class="record" href="convert-enquiry.php?id=<?=h($e['id'])?>" aria-label="View enquiry #<?=h($e['id'])?>: <?=h($e['title'])?>"><span><strong><?=h($e['title'])?></strong><small><?=h($e['client_name']??'Unassigned')?> · <?=h($e['priority'])?> · <?=h($e['status'])?><?php if($e['linked_task_id']):?> · Task #<?=(int)$e['linked_task_id']?><?php endif;?> · Required <?=h(niceDate($e['required_by']))?></small></span><span class="end" style="color:#285c43;font-weight:650;text-decoration:underline">Open enquiry #<?=h($e['id'])?></span></a><?php endforeach;?></div><?php endif;?></main></div><nav class="bottom" aria-label="Mobile navigation"><?php foreach(['today'=>'Today','tasks'=>'Tasks','work'=>'Work Log','clients'=>'Clients','more'=>'More'] as $k=>$v):?><a class="<?=($page===$k?'current':'')?>" href="<?=h(route($k))?>"><?=h($v)?></a><?php endforeach;?></nav></div><div class="release-indicator" aria-label="Application version">v<?=htmlspecialchars(CLOAKE_VERSION, ENT_QUOTES, 'UTF-8')?> <span>· build <?=htmlspecialchars(CLOAKE_BUILD, ENT_QUOTES, 'UTF-8')?></span></div></body></html>
+    require __DIR__ . '/inc/pages/' . $page . '.php';
+} catch (Throwable $e) {
+    error_log('Cloake page ' . $page . ' failed: ' . $e->getMessage());
+    ob_clean();
+    http_response_code(500);
+    echo '<div class="notice" role="alert"><strong>This screen could not be loaded.</strong> No data was changed. The error has been logged on the server.</div>';
+}
+$body = ob_get_clean();
+
+cm_page_start($pageTitle ?? $title, $section, $pageOpt ?? []);
+echo $body;
+cm_page_end($section, $scripts);
