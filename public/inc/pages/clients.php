@@ -8,10 +8,11 @@ defined('CLOAKE_CONFIG_FILE') || exit;
 $show = in_array($_GET['show'] ?? '', ['active', 'archive', 'all'], true) ? $_GET['show'] : ($q !== '' ? 'all' : 'active');
 $where = []; $args = [];
 if ($q !== '') {
-    $like = '%' . $q . '%';
+    // LOWER() on both sides: on MySQL 8, JSON_UNQUOTE() returns utf8mb4_bin (case-sensitive), unlike MariaDB.
+    $like = '%' . mb_strtolower($q) . '%';
     $digits = preg_replace('/\D+/', '', $q) ?? '';
-    $where[] = "(c.name LIKE ? OR c.source_id LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.business_name')) LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.email')) LIKE ?
-        OR EXISTS (SELECT 1 FROM contacts k WHERE k.client_id=c.id AND (k.display_name LIKE ? OR k.email LIKE ?" . (strlen($digits) >= 4 ? " OR REPLACE(REPLACE(REPLACE(k.phone,' ',''),'-',''),'+','') LIKE ?" : '') . ")))";
+    $where[] = "(LOWER(c.name) LIKE ? OR c.source_id LIKE ? OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.business_name'))) LIKE ? OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(c.legacy_record,'$.email'))) LIKE ?
+        OR EXISTS (SELECT 1 FROM contacts k WHERE k.client_id=c.id AND (LOWER(k.display_name) LIKE ? OR LOWER(k.email) LIKE ?" . (strlen($digits) >= 4 ? " OR REPLACE(REPLACE(REPLACE(k.phone,' ',''),'-',''),'+','') LIKE ?" : '') . ")))";
     array_push($args, $like, $like, $like, $like, $like, $like);
     if (strlen($digits) >= 4) $args[] = '%' . $digits . '%';
 }

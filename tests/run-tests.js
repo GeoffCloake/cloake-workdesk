@@ -27,7 +27,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
 /* ---------- db helpers ---------- */
 function sql(query) {
-  const outp = execFileSync('mysql', ['-N', '-B', '--raw', DB], { input: query, encoding: 'utf8' });
+  const outp = execFileSync('mysql', [...(process.env.MYSQL_ARGS || '').split(' ').filter(Boolean), '-N', '-B', '--raw', DB], { input: query, encoding: 'utf8' });
   return outp.split('\n').filter(l => l.length).map(l => l.split('\t').map(v => v === 'NULL' ? null : v));
 }
 const one = q => (sql(q)[0] || [])[0];
@@ -251,6 +251,24 @@ function protectedChecksums() {
     await go(page, 'index.php?page=clients&q=' + encodeURIComponent(S.contact.name));
     const names = await page.$$eval('.client-list .record strong', els => els.map(e => e.textContent));
     assert(names.some(n => n.includes(S.client.name)), names.join(' | '));
+    await ctx.close();
+  });
+
+  await test('F08', 'Server search is case-insensitive for business names and client emails (MySQL 8 JSON collation)', async () => {
+    const r = sql(`SELECT id,name,JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.business_name')) b FROM clients
+       WHERE COALESCE(JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.business_name')),'') NOT IN ('','null')
+         AND LOCATE(LOWER(SUBSTRING(JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.business_name')),1,6)), LOWER(name))=0 ORDER BY id LIMIT 1`)[0];
+    const e = sql(`SELECT id,JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.email')) FROM clients WHERE JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.email')) LIKE '%@%' ORDER BY id LIMIT 1`)[0];
+    const { ctx, page } = await newSession(375, { js: false });
+    const checks = [];
+    if (r) checks.push([+r[0], r[2].slice(0, 6).toUpperCase(), 'business name']);
+    if (e) checks.push([+e[0], e[1].split('@')[0].slice(0, 6).toUpperCase(), 'client email']);
+    for (const [cid, term, label] of checks) {
+      await go(page, 'index.php?page=clients&show=all&q=' + encodeURIComponent(term));
+      const hrefs = await page.$$eval('.client-list a.record', as => as.map(a => a.getAttribute('href')));
+      assert(hrefs.some(h => h.endsWith('id=' + cid)), `${label} search "${term}" missed client ${cid}`);
+      note(`${label}: "${term}" found`);
+    }
     await ctx.close();
   });
 
