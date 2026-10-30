@@ -36,6 +36,11 @@ Foundation: the v0.8.1 server snapshot you supplied, plus the v0.8.2 candidate's
 - Every write path's validation rules, columns, transactions, CSRF tokens and audit events: Log work, Quick Enquiry, enquiry → task conversion (row lock + re-check + unique key), edit task, edit enquiry. Edit pages' logic is byte-identical to v0.8.2.
 - Imported (Fabrik) tasks and work entries remain read-only. Billing remains review-only; no Xero calls exist in the code.
 
+### Installer revision 2 (package `…-installer2.zip`, 31 October 2026)
+Application files unchanged (same build 20261030.3). `deploy/install.sh` fixed after the first dry run on the server:
+- cPanel's jailed shell (CageFS) has no `/dev/fd`, so three loops silently ran zero times — the dry run reported "syntax OK" without checking and would have carried 0 server files (losing `.well-known/` and the live `.htaccess`). Loops now read plain temp files, and every check fails loudly if it inspected nothing.
+- The CLI `php` on the server is 7.4; the script now picks cPanel's EA PHP 8 automatically and syntax-checks with **every** installed PHP 8 version (8.0–8.5).
+
 ## v0.8.2 · build 20261030.2 — candidate, never confirmed installed
 Compact Today (no counts) and a 5-item bottom nav with a More page. Included in v0.9.0.
 

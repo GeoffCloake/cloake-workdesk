@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 VER=$(grep -oP "CLOAKE_VERSION = '\K[^']+" public/version.php)
 BUILD=$(grep -oP "CLOAKE_BUILD = '\K[^']+" public/version.php)
-NAME="cloake-manager-v$VER-build$BUILD"
+NAME="cloake-manager-v$VER-build$BUILD${PKG_REV:+-$PKG_REV}"
 OUT="dist/$NAME"
 rm -rf "$OUT" "dist/$NAME.zip"; mkdir -p "$OUT"
 git diff --quiet HEAD -- public deploy || { echo "Uncommitted changes in public/ or deploy/ — commit first."; exit 1; }
