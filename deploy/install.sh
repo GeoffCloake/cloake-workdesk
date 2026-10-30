@@ -109,7 +109,7 @@ if command -v curl >/dev/null; then
   if [ "$ok" = 1 ]; then say "Verified: $URL shows v$VERSION · build $BUILD"
   else
     say "VERIFY FAILED: $URL did not show the new version. Rolling back automatically."
-    mv "$LIVE" "$RELEASES/failed-v$VERSION-$STAMP"; mv "$PREV" "$LIVE"
+    mv "$LIVE" "$RELEASES/failed-v$VERSION-$STAMP"; mv "$PREV" "$LIVE"; rm -f "$RELEASES/LAST_PREVIOUS"
     say "Rolled back to the previous app. Failed release kept at $RELEASES/failed-v$VERSION-$STAMP for inspection."; exit 1
   fi
 else say "curl not available — open $URL and check the sign-in page shows v$VERSION · build $BUILD"; fi
