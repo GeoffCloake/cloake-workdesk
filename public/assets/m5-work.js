@@ -1,0 +1,1 @@
+"use strict";function syncMode(){const selected=document.querySelector('input[name="mode"]:checked');const times=selected&&selected.value==="times";document.getElementById('m5-duration').hidden=!!times;document.getElementById('m5-times').hidden=!times;}document.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener('change',syncMode));syncMode();

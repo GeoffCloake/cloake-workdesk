@@ -1,0 +1,9 @@
+# Never commit secrets or business data
+private/
+*.sql
+*.sql.gz
+*.csv
+*.zip
+*.log
+tests/node_modules/
+tests/artifacts/
