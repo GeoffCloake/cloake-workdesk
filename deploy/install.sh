@@ -100,6 +100,9 @@ mkdir -p "$STAGE"; cp -a "$SRC/." "$STAGE/"
 APP_FILES="$(cd "$SRC" && find . -type f | sed 's|^\./||')"
 carried=0
 (cd "$LIVE" && find . -type f) > "$TMPD/live.lst"
+# Recreate the live folder's directory structure too (e.g. an empty .well-known/acme-challenge for AutoSSL).
+(cd "$LIVE" && find . -mindepth 1 -type d) > "$TMPD/live-dirs.lst"
+while IFS= read -r d; do mkdir -p "$STAGE/${d#./}"; done < "$TMPD/live-dirs.lst"
 livecount=$(grep -c . "$TMPD/live.lst" || true)
 [ "$livecount" -ge 1 ] && grep -qxF './index.php' "$TMPD/live.lst" || die "could not list the live folder's files ($livecount found) — refusing to continue"
 while IFS= read -r f; do
