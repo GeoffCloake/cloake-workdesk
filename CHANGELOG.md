@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.9.0 · build 20261030.3 — 30 October 2026
-**Status: built and tested locally. Not yet deployed. Not yet user-confirmed.**
+**Status: deployed to manager-dev 31 Oct 2026 00:30 and user-confirmed 00:55** (Today, Release check, finder, phone Call, Log work). Site switched to PHP 8.3 (was 7.4).
 Foundation: the v0.8.1 server snapshot you supplied, plus the v0.8.2 candidate's Today/More changes. Nothing from either was discarded; every route and write path still exists. **No database changes.**
 
 ### Fixed
