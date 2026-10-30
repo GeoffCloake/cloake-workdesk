@@ -18,4 +18,12 @@ mv "$LIVE" "$RELEASES/rolledback-$STAMP"
 mv "$PREV" "$LIVE"
 rm -f "$RELEASES/LAST_PREVIOUS"
 echo "Rolled back. The removed release is kept at $RELEASES/rolledback-$STAMP"
-if command -v curl >/dev/null; then curl -ks --max-time 15 "$URL" | grep -oE 'v[0-9.]+ ?(<span>)?· build [0-9.]+' | head -1 | sed 's/^/Site now shows: /' || echo "Open $URL to confirm."; fi
+WANT="$(grep -oP "CLOAKE_BUILD = '\K[^']+" "$LIVE/version.php" 2>/dev/null || true)"
+if command -v curl >/dev/null && [ -n "$WANT" ]; then
+  # PHP caches can serve the removed folder for a few seconds: keep checking up to ~30 s.
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if curl -ks --max-time 15 "$URL" | grep -q "build $WANT"; then echo "Verified: site now shows build $WANT"; exit 0; fi
+    sleep 3
+  done
+  echo "The site does not show build $WANT yet — open $URL and check the version on the sign-in page."
+else echo "Open $URL to confirm the version on the sign-in page."; fi

@@ -131,10 +131,11 @@ say "Swapped. Previous app kept at: $PREV"
 # 7. Verify; automatic rollback if the new version doesn't answer
 ok=0
 if command -v curl >/dev/null; then
-  for i in 1 2 3; do
+  # PHP path/opcode caches can serve the old folder for a few seconds after the swap: keep checking up to ~30 s.
+  for i in 1 2 3 4 5 6 7 8 9 10; do
     body="$(curl -ks --max-time 15 "$URL" || true)"
     if grep -q "v$VERSION · build $BUILD" <<<"$body"; then ok=1; break; fi
-    sleep 2
+    sleep 3
   done
   if [ "$ok" = 1 ]; then say "Verified: $URL shows v$VERSION · build $BUILD"
   else
