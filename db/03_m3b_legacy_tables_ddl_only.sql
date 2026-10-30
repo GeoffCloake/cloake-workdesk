@@ -1,0 +1,44 @@
+-- DDL ONLY for the six M3B legacy_* archive tables (no data). Extracted from IMPORT_M3B_LEGACY_ARCHIVE.sql.gz.
+CREATE TABLE IF NOT EXISTS `legacy_clients` (
+ `source_id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ `source_table` VARCHAR(75) NOT NULL,
+ `source_record` JSON NOT NULL,
+ `row_sha256` CHAR(64) NOT NULL,
+ `archived_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `legacy_contacts` (
+ `source_id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ `source_table` VARCHAR(75) NOT NULL,
+ `source_record` JSON NOT NULL,
+ `row_sha256` CHAR(64) NOT NULL,
+ `archived_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `legacy_tasks` (
+ `source_id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ `source_table` VARCHAR(75) NOT NULL,
+ `source_record` JSON NOT NULL,
+ `row_sha256` CHAR(64) NOT NULL,
+ `archived_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `legacy_work_log` (
+ `source_id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ `source_table` VARCHAR(75) NOT NULL,
+ `source_record` JSON NOT NULL,
+ `row_sha256` CHAR(64) NOT NULL,
+ `archived_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `legacy_classification` (
+ `source_id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ `source_table` VARCHAR(75) NOT NULL,
+ `source_record` JSON NOT NULL,
+ `row_sha256` CHAR(64) NOT NULL,
+ `archived_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS `legacy_enquiries` (
+ `source_id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ `source_table` VARCHAR(75) NOT NULL,
+ `source_record` JSON NOT NULL,
+ `row_sha256` CHAR(64) NOT NULL,
+ `archived_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

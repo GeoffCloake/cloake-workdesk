@@ -7,3 +7,7 @@ private/
 *.log
 tests/node_modules/
 tests/artifacts/
+
+# schema files for tests (no data) are allowed
+!db/*.sql
+!tests/fixture/*.sql
