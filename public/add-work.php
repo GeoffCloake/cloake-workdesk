@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Validation, limits, columns, transaction and audit event are unchanged.
  */
 require __DIR__ . '/inc/bootstrap.php';
-require __DIR__ . '/inc/forms.php';
+require_once __DIR__ . '/inc/forms.php';
 cm_require_login();
 $pdo = cm_pdo();
 function lookup(PDO $pdo, string $sql, array $args = []): array { $s = $pdo->prepare($sql); $s->execute($args); return $s->fetchAll(PDO::FETCH_ASSOC); }

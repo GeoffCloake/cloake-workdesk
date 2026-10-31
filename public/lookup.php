@@ -18,15 +18,8 @@ function out(array $data): void { echo json_encode($data, JSON_UNESCAPED_UNICODE
 
 try {
     if (isset($_GET['clients'])) {
-        $clients = allRows($pdo, "SELECT id, name, status, source_id,
-              JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.business_name')) business_name,
-              JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.email')) email,
-              JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.phone')) phone,
-              COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.physical_city_town')),''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.postal_city_town')),'')) town
-            FROM clients ORDER BY name");
-        $contacts = allRows($pdo, "SELECT client_id, display_name, email, phone,
-              JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.mobile')) mobile
-            FROM contacts WHERE client_id IS NOT NULL ORDER BY display_name");
+        $clients = allRows($pdo, "SELECT id, name, status, source_id, business_name, email, phone, COALESCE(physical_city_town, postal_city_town) town FROM clients ORDER BY name");
+        $contacts = allRows($pdo, "SELECT client_id, display_name, email, phone, mobile FROM contacts WHERE client_id IS NOT NULL AND COALESCE(status,'')<>'archive' ORDER BY display_name");
         $byClient = [];
         foreach ($contacts as $c) {
             $mobile = ($c['mobile'] ?? '') === 'null' ? '' : (string)($c['mobile'] ?? '');

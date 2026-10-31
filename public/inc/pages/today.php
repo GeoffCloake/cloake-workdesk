@@ -38,8 +38,8 @@ $recent = allRows($pdo, "SELECT w.id,w.details,w.work_date,w.started_at,w.durati
 // Build one attention queue, earliest first.
 $queue = [];
 foreach ($due as $t) {
-    $late = substr((string)$t['required_by'], 0, 10) < $today;
-    $queue[] = ['sort' => substr((string)$t['required_by'], 0, 10), 'kind' => $late ? 'Overdue' : 'Due', 'tone' => $late ? 'late' : 'due',
+    $dd = substr((string)$t['required_by'], 0, 10); $late = $dd < $today;
+    $queue[] = ['sort' => $dd, 'kind' => $late ? 'Overdue' : ($dd === $today ? 'Due today' : 'Due'), 'tone' => $late ? 'late' : 'due',
         'title' => $t['title'], 'meta' => ($t['client_name'] ?? 'Unassigned') . ' · ' . cm_status_label($t['status']),
         'when' => niceDate($t['required_by']), 'href' => route('task', ['id' => $t['id']]),
         'act' => ['add-work.php?task_id=' . (int)$t['id'], 'Log work']];

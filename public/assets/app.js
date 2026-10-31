@@ -302,6 +302,7 @@
     // Mode switch incl. timer.
     $$('[data-js-only]', wf).forEach(function (n) { n.hidden = false; });
     var secDur = $('#m5-duration'), secTimes = $('#m5-times'), secTimer = $('#m5-timer');
+    if (secDur && secTimes && secTimer) {
     function mode() { var r = $('input[name="mode"]:checked', wf); return r ? r.value : 'duration'; }
     function syncMode() { var m = mode(); secDur.hidden = m !== 'duration'; secTimes.hidden = m !== 'times'; secTimer.hidden = m !== 'timer'; }
     $$('input[name="mode"]', wf).forEach(function (r) { r.addEventListener('change', syncMode); });
@@ -333,6 +334,7 @@
     wf.addEventListener('submit', function (e) {
       if (mode() === 'timer' && !useTimer()) { e.preventDefault(); window.alert('Start the timer, or choose Duration.'); }
     });
+    } // end timer/mode section (Log work page only)
   }
 
   /* ---------------- forms: prevent accidental double submit ---------------- */

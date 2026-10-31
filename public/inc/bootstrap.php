@@ -14,6 +14,10 @@ declare(strict_types=1);
  *   - CSP default-src/style-src/script-src 'self' (no inline CSS or JS anywhere)
  */
 if (PHP_SAPI !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === basename(__FILE__)) { http_response_code(404); exit; }
+if (PHP_VERSION_ID < 80000) {
+    http_response_code(503); header('Content-Type: text/plain; charset=utf-8');
+    exit("Cloake Manager needs PHP 8.0 or newer; this site is running PHP " . PHP_VERSION . ".\nIn cPanel > MultiPHP Manager, set this domain to ea-php83.");
+}
 
 require_once __DIR__ . '/../version.php';
 
@@ -131,3 +135,4 @@ date_default_timezone_set('Pacific/Auckland');
 cm_send_headers();
 cm_start_session();
 require_once __DIR__ . '/layout.php';
+require_once __DIR__ . '/edit.php';

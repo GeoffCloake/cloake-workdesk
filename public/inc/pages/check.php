@@ -17,6 +17,10 @@ $cols = [];
 foreach (allRows($pdo, 'SELECT TABLE_NAME t, COLUMN_NAME c, IS_NULLABLE n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE()') as $r) $cols[$r['t'] . '.' . $r['c']] = $r['n'];
 foreach (['work_log.work_date', 'work_log.duration_seconds', 'work_log.billable_seconds', 'work_log.billability', 'tasks.enquiry_id', 'enquiries.next_action_due', 'enquiries.legacy_source_id', 'activity_events.payload'] as $c) $add("Column $c", isset($cols[$c]));
 $add('tasks.client_id allows unassigned (M3D)', ($cols['tasks.client_id'] ?? '') === 'YES');
+$mig001 = ['clients.email', 'clients.business_name', 'clients.physical_city_town', 'clients.notes', 'clients.updated_at', 'contacts.mobile', 'contacts.first_name', 'contacts.status', 'contacts.updated_at'];
+$missing001 = array_values(array_filter($mig001, fn($c) => !isset($cols[$c])));
+$ledger = in_array('schema_migrations', $tables, true) ? array_column(allRows($pdo, 'SELECT id FROM schema_migrations'), 'id') : [];
+$add('Migration 001 — editable client & contact details', !$missing001 && in_array('001_editable_details', $ledger, true), $missing001 ? 'missing: ' . implode(', ', $missing001) : (in_array('001_editable_details', $ledger, true) ? 'applied' : 'columns present but not recorded'));
 $uq = oneRow($pdo, "SELECT COUNT(*) n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tasks' AND INDEX_NAME='uq_task_source'");
 $add('Duplicate-conversion guard (tasks unique source key)', (int)$uq['n'] > 0);
 $counts = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM clients) clients, (SELECT COUNT(*) FROM contacts) contacts,

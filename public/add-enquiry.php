@@ -6,7 +6,7 @@ declare(strict_types=1);
  * review/convert after saving. Validation, columns and transaction unchanged.
  */
 require __DIR__ . '/inc/bootstrap.php';
-require __DIR__ . '/inc/forms.php';
+require_once __DIR__ . '/inc/forms.php';
 cm_require_login();
 $pdo = cm_pdo();
 function validDate(string $value): bool { if ($value === '') return true; $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value); return $date !== false && $date->format('Y-m-d') === $value; }

@@ -3,16 +3,17 @@ declare(strict_types=1);
 defined('CLOAKE_CONFIG_FILE') || exit;
 /*
  * Client detail, phone-first: who, how to reach them, what's open, what happened.
- * Read-only. All values come from the clients/contacts/tasks/work_log/enquiries
- * tables and the preserved legacy_record JSON; nothing is inferred or totalled
- * into money.
+ * Values come from the clients/contacts/tasks/work_log/enquiries tables (client and contact
+ * details from the editable columns added by migration 001). The original imported record is
+ * shown read-only at the bottom. Nothing is inferred or totalled into money.
  */
 $pageOpt = ['back' => [route('clients'), 'Clients'], 'h1' => false];
 $c = oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$id]);
 if (!$c) { http_response_code(404); echo '<p class="emptyline">Client not found. <a href="' . h(route('clients')) . '">Back to clients</a></p>'; return; }
 $pageTitle = $c['name'];
 $raw = legacy($c['legacy_record']);
-$rv = function (string $k) use ($raw): string { $v = $raw[$k] ?? ''; if (is_array($v)) $v = implode(', ', $v); $v = trim((string)$v); return ($v === 'null' || $v === '0000-00-00 00:00:00') ? '' : $v; };
+$rv = fn(string $k): string => trim((string)($c[$k] ?? ''));          // current (editable) value
+$migrated = array_key_exists('email', $c);                              // migration 001 applied?
 $closed = cm_closed_status_sql('status');
 
 $contacts = allRows($pdo, 'SELECT * FROM contacts WHERE client_id=? ORDER BY display_name LIMIT 200', [$id]);
@@ -27,8 +28,10 @@ $enquiries = allRows($pdo, "SELECT e.id,e.title,e.status,e.created_at,e.next_act
 // Best phone/email for the top quick actions: client record first, then first active contact.
 $primaryPhone = $rv('phone'); $primaryEmail = $rv('email');
 foreach ($contacts as $k) {
-    if ($primaryPhone === '' && trim((string)$k['phone']) !== '' && legacyValue($k, 'status') !== 'archive') $primaryPhone = trim((string)$k['phone']);
-    if ($primaryEmail === '' && validEmail(trim((string)$k['email'])) && legacyValue($k, 'status') !== 'archive') $primaryEmail = trim((string)$k['email']);
+    if (($k['status'] ?? '') === 'archive') continue;
+    $kp = trim((string)($k['mobile'] ?? '')) ?: trim((string)$k['phone']);
+    if ($primaryPhone === '' && $kp !== '') $primaryPhone = $kp;
+    if ($primaryEmail === '' && validEmail(trim((string)$k['email']))) $primaryEmail = trim((string)$k['email']);
 }
 $tel = telHref($primaryPhone);
 $isArchived = strtolower((string)$c['status']) === 'archive';
@@ -54,11 +57,13 @@ $timeline = array_slice($timeline, 0, 40);
 $addr = fn(array $keys) => implode(', ', array_filter(array_map($rv, $keys), 'strlen'));
 $physical = $addr(['physical_address_1', 'physical_address_2', 'physical_city_town', 'physical_country']);
 $postal = $addr(['postal_address_1', 'postal_address_2', 'postal_address_3', 'postal_city_town', 'postal_code', 'postal_country']);
-$domains = $rv('domains');
+$savedFlag = $_GET['saved'] ?? null;
 ?>
+<?php if ($savedFlag === '1'): ?><div class="success" role="status">Saved.</div><?php elseif ($savedFlag === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
+<?php if (!$migrated): ?><div class="notice"><strong>Database update pending.</strong> Client details can't be edited until migration 001 is applied (see More ▸ Release check).</div><?php endif; ?>
 <header class="client-head" data-recent-client="<?=(int)$id?>" data-name="<?=h($c['name'])?>">
-  <h1><?=h($c['name'])?></h1>
-  <p class="client-sub"><?php if ($isArchived): ?><em class="tag">Archived</em> <?php endif; ?><?=h(implode(' · ', array_filter([$rv('business_name') !== $c['name'] ? $rv('business_name') : '', $rv('physical_city_town') ?: $rv('postal_city_town'), 'Legacy ID ' . $c['source_id']])))?></p>
+  <div class="head-row"><h1><?=h($c['name'])?></h1><?php if ($migrated): ?><a class="edit-link" href="edit-client.php?id=<?=(int)$id?>">Edit</a><?php endif; ?></div>
+  <p class="client-sub"><?php if ($isArchived): ?><em class="tag">Archived</em> <?php endif; ?><?=h(implode(' · ', array_filter([$rv('business_name') !== $c['name'] ? $rv('business_name') : '', $rv('physical_city_town') ?: $rv('postal_city_town'), $c['legacy_record'] ? 'Legacy ID ' . $c['source_id'] : 'Added in this app'])))?></p>
 </header>
 
 <nav class="client-actions" aria-label="Client actions">
@@ -76,14 +81,14 @@ $domains = $rv('domains');
 </div>
 
 <section aria-labelledby="ct">
-  <h2 id="ct">Contacts</h2>
+  <div class="section-heading" id="contacts"><h2 id="ct">Contacts</h2><?php if ($migrated): ?><a href="edit-contact.php?client_id=<?=(int)$id?>">＋ Contact</a><?php endif; ?></div>
   <?php if (!$contacts): ?><p class="emptyline">No contacts linked to this client.</p><?php endif; ?>
   <?php $archivedContacts = []; ?>
   <div class="stack contact-list"><?php foreach ($contacts as $k):
-      if (legacyValue($k, 'status') === 'archive') { $archivedContacts[] = $k; continue; }
-      $mobile = legacyValue($k, 'mobile'); $phone = legacyValue($k, 'phone'); if ($phone === '' && $mobile === '') $phone = trim((string)$k['phone']);
-      $role = implode(' · ', array_filter([legacyValue($k, 'position'), legacyValue($k, 'contact_type')])); $email = trim((string)$k['email']); ?>
-    <div class="contact-card"><div class="contact-who"><strong><?=h($k['display_name'] ?: 'Unnamed contact')?></strong><?php if ($role): ?><small><?=h($role)?></small><?php endif; ?></div>
+      if (($k['status'] ?? '') === 'archive') { $archivedContacts[] = $k; continue; }
+      $mobile = trim((string)($k['mobile'] ?? '')); $phone = trim((string)$k['phone']);
+      $role = implode(' · ', array_filter([trim((string)($k['position'] ?? '')), cm_list_text($k['contact_type'] ?? '')])); $email = trim((string)$k['email']); ?>
+    <div class="contact-card"><div class="contact-who"><strong><?=h($k['display_name'] ?: 'Unnamed contact')?></strong><?php if ($migrated): ?><a class="edit-link small" href="edit-contact.php?id=<?=(int)$k['id']?>">Edit</a><?php endif; ?><?php if ($role): ?><small><?=h($role)?></small><?php endif; ?></div>
       <div class="contact-links">
         <?php if ($mobile !== '' && telHref($mobile)): ?><a href="<?=h(telHref($mobile))?>" aria-label="Call mobile <?=h($mobile)?>"><span class="lbl">Mobile</span> <?=h($mobile)?></a><?php endif; ?>
         <?php if ($phone !== '' && telHref($phone) && $phone !== $mobile): ?><a href="<?=h(telHref($phone))?>" aria-label="Call <?=h($phone)?>"><span class="lbl">Phone</span> <?=h($phone)?></a><?php endif; ?>
@@ -91,12 +96,12 @@ $domains = $rv('domains');
       </div></div>
   <?php endforeach; ?></div>
   <?php if ($archivedContacts): ?><details><summary>Archived contacts (<?=count($archivedContacts)?>)</summary><div class="stack">
-    <?php foreach ($archivedContacts as $k): ?><div class="record"><span><strong><?=h($k['display_name'] ?: 'Unnamed contact')?></strong><small><?=h(implode(' · ', array_filter([(string)$k['email'], (string)$k['phone']])))?></small></span></div><?php endforeach; ?>
+    <?php foreach ($archivedContacts as $k): ?><div class="record"><span><strong><?=h($k['display_name'] ?: 'Unnamed contact')?></strong><small><?=h(implode(' · ', array_filter([(string)$k['email'], (string)$k['phone']])))?></small></span><?php if ($migrated): ?><a class="inline-action" href="edit-contact.php?id=<?=(int)$k['id']?>">Edit</a><?php endif; ?></div><?php endforeach; ?>
   </div></details><?php endif; ?>
 </section>
 
 <section aria-labelledby="ot">
-  <div class="section-heading"><h2 id="ot">Open tasks</h2><a href="add-enquiry.php?client_id=<?=(int)$id?>">＋ Enquiry</a></div>
+  <div class="section-heading"><h2 id="ot">Open tasks</h2><a href="edit-task.php?client_id=<?=(int)$id?>">＋ Task</a></div>
   <?php if (!$tasksOpen): ?><p class="emptyline">No open tasks for this client.</p><?php else: ?>
   <div class="stack compact-list"><?php foreach ($tasksOpen as $t): $late = $t['required_by'] && substr((string)$t['required_by'], 0, 10) < $today; ?>
     <div class="record"><a class="record-main" href="<?=h(route('task', ['id' => $t['id']]))?>"><strong><?=h($t['title'])?></strong><small><?=h(cm_status_label($t['status']))?><?=$t['pricing'] ? ' · ' . h(cm_status_label($t['pricing'])) : ''?><?=$t['required_by'] ? ' · due ' . h(niceDate($t['required_by'])) : ''?></small></a>
@@ -125,11 +130,15 @@ $domains = $rv('domains');
 </section>
 
 <details><summary>Client details</summary><dl>
-  <?php foreach (['Email' => $rv('email'), 'Phone' => $rv('phone'), 'Physical address' => $physical, 'Postal address' => $postal, 'Preferred contact' => $rv('contact_method'), 'Xero contact reference' => $rv('xero_contact') ?: (string)$c['xero_contact_id'], 'Credit approved' => $rv('credit_approved'), 'Notes' => $rv('notes'), 'Comments' => $rv('comments')] as $label => $val): ?>
+  <?php foreach (['Business name' => $rv('business_name'), 'Email' => $rv('email'), 'Phone' => $rv('phone'), 'Physical address' => $physical, 'Postal address' => $postal, 'Preferred contact' => $rv('contact_method'), 'Xero contact reference' => (string)$c['xero_contact_id'], 'Notes' => $rv('notes')] as $label => $val): ?>
   <dt><?=h($label)?></dt><dd><?=h($val !== '' ? $val : '—')?></dd>
   <?php endforeach; ?>
+</dl><?php if ($migrated): ?><p><a class="inline-action" href="edit-client.php?id=<?=(int)$id?>">Edit client details</a></p><?php endif; ?></details>
+<?php if ($raw): $shown = array_filter($raw, fn($v) => !is_array($v) && trim((string)$v) !== '' && $v !== 'null' && $v !== '0000-00-00 00:00:00'); ksort($shown); ?>
+<details><summary>Original imported record (read-only)</summary><p class="small muted">Exactly as imported from the old task manager<?=$c['updated_at'] ?? null ? '; edits above do not change it' : ''?>.</p><dl class="raw-record">
+  <?php foreach ($shown as $kk => $vv): ?><dt><?=h($kk)?></dt><dd><?=h((string)$vv)?></dd><?php endforeach; ?>
 </dl></details>
+<?php endif; ?>
 <details><summary>Services &amp; domains</summary>
-  <?php if ($domains !== ''): ?><dl><dt>Domains (from task manager)</dt><dd><?=h($domains)?></dd></dl><?php endif; ?>
   <p class="small muted">WHMCS hosting services, domain renewals and Xero invoices have not been imported or reconciled yet, so none are shown here. Nothing on this page is a renewal or amount owing.</p>
 </details>

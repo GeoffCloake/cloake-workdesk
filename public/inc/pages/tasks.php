@@ -14,6 +14,7 @@ $sql = 'SELECT t.id,t.title,t.source_id,t.source_system,t.status,t.required_by,t
     . ($sortDue ? ' ORDER BY (t.required_by IS NULL), t.required_by ASC, t.id DESC' : ' ORDER BY t.id DESC') . ' LIMIT 100';
 $rows = allRows($pdo, $sql, $args);
 ?>
+<p><a class="button-link" href="edit-task.php"><span aria-hidden="true">＋</span> New task</a></p>
 <form class="search" method="get" action="index.php" role="search"><input type="hidden" name="page" value="tasks"><input type="hidden" name="status" value="<?=h($status)?>"><label for="tq" class="visually-hidden">Search tasks</label><input id="tq" type="search" name="q" value="<?=h($q)?>" placeholder="Task, client or original ID" enterkeyhint="search"><button type="submit">Search</button></form>
 <nav class="chips" aria-label="Task status">
 <?php foreach (['open' => 'Open', 'closed' => 'Completed / cancelled', 'all' => 'All'] as $k => $v): ?>
