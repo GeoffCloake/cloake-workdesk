@@ -12,3 +12,4 @@ tests/artifacts/
 !db/*.sql
 !tests/fixture/*.sql
 dist/
+!deploy/migrations/*.sql
