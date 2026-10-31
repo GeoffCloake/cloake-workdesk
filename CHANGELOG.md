@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.10.0 · build 20261031.2 — 31 October 2026
-**Status: built and tested locally (62/62 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data; install rehearsed on a simulated copy of the server). Not yet deployed. Not yet user-confirmed.**
+**Status: deployed to manager-dev 1 Nov 2026 ~11:40 with installer revision 2, and user-confirmed 11:49.** Tested locally beforehand: 62/62 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data.
 Editing, to the rules you approved on 31 October. **Includes database migrations 001 and 002** (add-only, reversible; see below).
 
 ### Added — from your Fabrik forms (build 2)
@@ -41,6 +41,9 @@ Editing, to the rules you approved on 31 October. **Includes database migrations
 - The app shows a plain "needs PHP 8 — set ea-php83 in MultiPHP Manager" page instead of a generic error if PHP is ever below 8.0.
 - Today labels tasks due today as "Due today".
 - The instant finder refreshes immediately after a save (it previously cached for up to 10 minutes).
+
+### Installer revision 2 (package `…-installer2.zip`, 1 November 2026)
+Application files unchanged (same build 20261031.2). The first dry run on the server stopped with "PHP 7.4.33 syntax error in edit-work.php": one of the server's `ea-php8*` paths actually runs PHP 7.4, and the new code uses PHP 8 syntax. The installer now runs its checks and migrations with the website's own MultiPHP version (ea-php83), and syntax-checks only with programs that report PHP 8 or later (on the server: 8.3, 8.0, 8.1, 8.2, 8.5).
 
 ## v0.9.0 · build 20261030.3 — 30 October 2026
 **Status: deployed to manager-dev 31 Oct 2026 00:30 and user-confirmed 00:55** (Today, Release check, finder, phone Call, Log work). Site switched to PHP 8.3 (was 7.4).

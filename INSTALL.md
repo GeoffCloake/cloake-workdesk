@@ -10,12 +10,12 @@ Proven on the 31 Oct install: use **WHM Terminal → `su -s /bin/bash - cloakecr
 
 ## Steps (cPanel Terminal, as cloakecrea)
 
-1. **Upload** `cloake-manager-v0.10.0-build20261031.2.zip` to `/home/cloakecrea/cloake-manager/releases/`.
+1. **Upload** `cloake-manager-v0.10.0-build20261031.2-installer2.zip` to `/home/cloakecrea/cloake-manager/releases/`.
 2. **Unpack and dry-run** (changes nothing):
    ```bash
    cd ~/cloake-manager/releases
-   unzip -q cloake-manager-v0.10.0-build20261031.2.zip
-   cd cloake-manager-v0.10.0-build20261031.2
+   unzip -q cloake-manager-v0.10.0-build20261031.2-installer2.zip
+   cd cloake-manager-v0.10.0-build20261031.2-installer2
    bash deploy/install.sh --dry-run
    ```
    Expect: `Website PHP: ea-php83`, `Currently installed: … '0.9.0'`, `Database: migration pending — would apply:` 001_editable_details and 002_task_workload_fields, the same `carried:` lines as last time, and `Dry run complete`.
