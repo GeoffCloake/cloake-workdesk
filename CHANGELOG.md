@@ -3,6 +3,32 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.10.0 · build 20261031.1 — 31 October 2026
+**Status: built and tested locally (54/54 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data; install rehearsed on a simulated copy of the server). Not yet deployed. Not yet user-confirmed.**
+Editing, to the rules you approved on 31 October. **Includes database migration 001** (add-only, reversible; see below).
+
+### Added — editing
+- **Clients:** add and edit name, business name, email, phone, preferred contact, physical and postal address, notes, Xero reference. **Archive / restore** instead of delete. A new client with the same name or email as an existing one is stopped once ("Create anyway" to proceed), to keep one record per client for the WHMCS reconciliation.
+- **Contacts:** add, edit, archive; contact roles as tick-boxes (Accounts, Project liaison, Domain owner/admin/tech, plus your own); **move a contact to another client**; the contacts that had no client in the old system are listed under Clients ▸ "Contacts without a client" so each can be given one.
+- **Tasks:** **create tasks directly** (＋ Task on a client page or Tasks list), with pricing type, agreed fee and time estimate. Tasks created here: everything editable. **Imported tasks:** status, completed date, due date, priority, notes and client can now be updated — so the old "in progress" backlog can be closed. Their title, instructions and historical billing (pricing, amounts, invoice references) stay locked.
+- **Work Log:** entries created here are fully editable (description, date, duration, client, task, billing decision, billable time, staff). **Imported entries** can be linked to a task or client and given a billing decision; their description, time and amounts stay locked.
+- **Enquiries:** the client of an unconverted enquiry can be changed.
+- Every create/update writes an audit event recording each changed field's previous and current value. **Two people editing the same record:** the second save is refused with a clear message instead of silently overwriting.
+- Client page: read-only **"Original imported record"** panel showing every value exactly as imported.
+
+### Database — migration 001 (`deploy/migrations/`)
+- Adds 16 columns to `clients` and 10 to `contacts` and fills them from each imported row's original record (339 clients and 524 contacts on your data). **No existing column or value is changed**; the original record stays untouched as provenance.
+- The installer applies it automatically after backing up, if the database user may change table structure; otherwise it stops and gives you a one-paste phpMyAdmin step. Every filled value is verified against its source before the migration is recorded.
+- Undo: `php deploy/migrate.php rollback --confirm` or the `.rollback.sql` file — tested to restore the database byte-for-byte. Not needed to roll back the app: v0.9.0 runs normally on the migrated database (tested).
+
+### Fixed
+- Pre-chosen client was not filled in on New contact / New task / New client forms (found by the new tests before release).
+- "Domains" shown on the client page was a 0/1 flag from the old system, not domain names — removed.
+- Installer: reads the website's PHP version from cPanel MultiPHP (stops with instructions if below 8.0); version number now read from the package; empty server folders (e.g. `.well-known`) carried over; migration SQL files now included in the package.
+- The app shows a plain "needs PHP 8 — set ea-php83 in MultiPHP Manager" page instead of a generic error if PHP is ever below 8.0.
+- Today labels tasks due today as "Due today".
+- The instant finder refreshes immediately after a save (it previously cached for up to 10 minutes).
+
 ## v0.9.0 · build 20261030.3 — 30 October 2026
 **Status: deployed to manager-dev 31 Oct 2026 00:30 and user-confirmed 00:55** (Today, Release check, finder, phone Call, Log work). Site switched to PHP 8.3 (was 7.4).
 Foundation: the v0.8.1 server snapshot you supplied, plus the v0.8.2 candidate's Today/More changes. Nothing from either was discarded; every route and write path still exists. **No database changes.**
