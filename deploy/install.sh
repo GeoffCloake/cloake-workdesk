@@ -71,8 +71,14 @@ say "Package: $PKG"; say "Live:    $LIVE"; [ "$DRY" = 1 ] && say "(dry run — n
 # 1. Pre-flight
 [ -d "$LIVE" ] || die "live folder not found: $LIVE"
 [ -f "$CONFIG" ] || die "private config not found: $CONFIG (must exist outside public_html)"
+# Use the same PHP as the website (cPanel MultiPHP handler in the live .htaccess, e.g. ea-php83) when it is installed.
+SITE_PHP_EARLY="$(grep -oE 'ea-php[0-9]{2}' "$LIVE/.htaccess" 2>/dev/null | tail -1 || true)"
+if [ -z "${CM_PHP:-}" ] && [ -n "$SITE_PHP_EARLY" ] && [ -x "/opt/cpanel/$SITE_PHP_EARLY/root/usr/bin/php" ] \
+   && "/opt/cpanel/$SITE_PHP_EARLY/root/usr/bin/php" -r 'exit(version_compare(PHP_VERSION,"8.0.0",">=")?0:1);' 2>/dev/null; then
+  PHP="/opt/cpanel/$SITE_PHP_EARLY/root/usr/bin/php"
+fi
 [ -n "$PHP" ] || die "php not found on PATH (set CM_PHP=/path/to/php)"
-say "PHP: $("$PHP" -r 'echo PHP_VERSION;')"
+say "PHP: $("$PHP" -r 'echo PHP_VERSION;') ($PHP — same as the website when available)"
 "$PHP" -r 'exit(version_compare(PHP_VERSION,"8.0.0",">=")?0:1);' || die "PHP 8.0+ required (set CM_PHP=/opt/cpanel/ea-php8X/root/usr/bin/php)"
 LINT_PHPS=("$PHP")
 # Extra PHP 8 binaries for the syntax check. Each must itself report PHP 8+ (on some cPanel servers a path under
