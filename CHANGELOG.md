@@ -3,9 +3,22 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
-## v0.10.0 · build 20261031.1 — 31 October 2026
-**Status: built and tested locally (54/54 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data; install rehearsed on a simulated copy of the server). Not yet deployed. Not yet user-confirmed.**
-Editing, to the rules you approved on 31 October. **Includes database migration 001** (add-only, reversible; see below).
+## v0.10.0 · build 20261031.2 — 31 October 2026
+**Status: built and tested locally (62/62 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data; install rehearsed on a simulated copy of the server). Not yet deployed. Not yet user-confirmed.**
+Editing, to the rules you approved on 31 October. **Includes database migrations 001 and 002** (add-only, reversible; see below).
+
+### Added — from your Fabrik forms (build 2)
+- **Task form** grouped like Fabrik (Client details · Administration · Pricing & billing): **contact** (lists the chosen client's contacts), **Action for** tick-boxes (+ anyone else), **queue**, **category → type** (types follow the category, from your archived Fabrik classification table), **domain(s)**; for tasks created here also **chargeable**, **time estimate in hours + minutes**, **job no / order no**, **invoice no / reference**, **billing advised**.
+- **Status and priority use your Fabrik words:** Pending, Planned, In progress, Ongoing, Waiting, On hold, Completed, Cancelled (+ “Open (new)” for tasks from enquiries); Immediate, High, Normal, Low. Existing values (e.g. “urgent”) are kept and shown as “(current)”.
+- **Imported tasks** can additionally have contact, Action for, queue, category, type and domains updated (workload fields). Billing fields remain locked.
+- **Tasks list:** filter by status (incl. each Fabrik status), Action for, priority; sort by newest, required date, priority or **queue**; Immediate tasks flagged.
+- **Work Log list:** filter by **staff, client and date range**, with **totals** (entries, worked, billable) for the filtered set; start–finish and imported charge rate shown.
+- **Clients list:** filter by **contact role** (e.g. everyone with a Domain owner contact), showing who.
+- **CSV export** on Clients, Tasks and Work Log — exactly the filtered list, Excel-friendly (UTF-8), formula-looking cells neutralised.
+- **Task page:** contact (tap to call/email), Action for, category › type, queue, domains, and **time-sheet totals** (hours worked / billable; dollar amounts are never recalculated).
+- **Client form:** postal region, credit approved, comments. **Contact form:** title.
+- **Database migration 002** (add-only, verified, reversible like 001): fills these from your imported records — on your data: task contact 1,345, Action for 1,809, queue 1,828, category 1,813, type 1,725, domains 122.
+- Not added (kept visible in each task's original imported record): additional costs, invoice details, Vetta ticket.
 
 ### Added — editing
 - **Clients:** add and edit name, business name, email, phone, preferred contact, physical and postal address, notes, Xero reference. **Archive / restore** instead of delete. A new client with the same name or email as an existing one is stopped once ("Create anyway" to proceed), to keep one record per client for the WHMCS reconciliation.
