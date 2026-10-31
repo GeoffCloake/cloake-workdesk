@@ -27,12 +27,13 @@ fs.mkdirSync(OUT, { recursive: true });
 
 /* ---------- db helpers ---------- */
 function sql(query) {
-  const outp = execFileSync('mysql', [...(process.env.MYSQL_ARGS || '').split(' ').filter(Boolean), '-N', '-B', '--raw', DB], { input: query, encoding: 'utf8' });
+  const outp = execFileSync('mysql', [...(process.env.MYSQL_ARGS || '').split(' ').filter(Boolean), '--default-character-set=utf8mb4', '-N', '-B', '--raw', DB], { input: query, encoding: 'utf8' });
   return outp.split('\n').filter(l => l.length).map(l => l.split('\t').map(v => v === 'NULL' ? null : v));
 }
 const one = q => (sql(q)[0] || [])[0];
 const num = q => parseInt(one(q) || '0', 10);
 const esc = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+const VERSION_LABEL = (() => { const v = fs.readFileSync(path.join(__dirname, '../public/version.php'), 'utf8'); return 'v' + /CLOAKE_VERSION = '([^']+)'/.exec(v)[1] + ' · build ' + /CLOAKE_BUILD = '([^']+)'/.exec(v)[1]; })();
 const todayNZ = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date());
 
 /* ---------- tiny test harness ---------- */
@@ -74,7 +75,7 @@ function subjects() {
   // client with an active contact that has a dialable phone, and an email somewhere
   let r = sql(`SELECT c.id,c.name,k.display_name,k.phone FROM clients c JOIN contacts k ON k.client_id=c.id
      WHERE LOWER(COALESCE(c.status,''))<>'archive' AND k.phone REGEXP '[0-9]{3}.*[0-9]{4}' AND k.display_name IS NOT NULL
-       AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(k.legacy_record,'$.status')),'')<>'archive'
+       AND COALESCE(k.status,'')<>'archive'
        AND LOCATE(LOWER(SUBSTRING_INDEX(k.display_name,' ',-1)), LOWER(c.name))=0
        AND (SELECT COUNT(*) FROM contacts k2 WHERE k2.display_name=k.display_name)=1
      ORDER BY c.id LIMIT 1`)[0];
@@ -90,16 +91,19 @@ function subjects() {
   s.fabrikTaskWithClient = +one(`SELECT id FROM tasks WHERE source_system='fabrik' AND client_id IS NOT NULL ORDER BY id DESC LIMIT 1`);
   s.anyClient = +one(`SELECT id FROM clients WHERE LOWER(COALESCE(status,''))<>'archive' ORDER BY name LIMIT 1 OFFSET 3`);
   s.manyMatch = 'a';
+  s.contactId = +one(`SELECT id FROM contacts WHERE client_id=${s.client.id} ORDER BY id LIMIT 1`);
+  s.fabrikWork = +one(`SELECT id FROM work_log WHERE source_system='fabrik' ORDER BY id LIMIT 1`);
   return s;
 }
 /* checksums of data that must never change */
 function protectedChecksums() {
   const rowsum = (table, cols, where = '') => one(`SELECT CONCAT(COUNT(*),':',COALESCE(SUM(CRC32(CONCAT_WS('|',${cols}))),0)) FROM ${table} ${where}`);
+  // v0.10.0 rules: imported records' original copy (legacy_record) and locked fields never change.
   const out = {
-    clients: rowsum('clients', 'id,source_system,source_id,name,COALESCE(status,""),COALESCE(xero_contact_id,""),COALESCE(CAST(legacy_record AS CHAR),"")'),
-    contacts: rowsum('contacts', 'id,COALESCE(client_id,""),source_id,COALESCE(display_name,""),COALESCE(email,""),COALESCE(phone,""),COALESCE(CAST(legacy_record AS CHAR),"")'),
-    fabrik_tasks: rowsum('tasks', 'id,COALESCE(client_id,""),title,COALESCE(status,""),COALESCE(required_by,""),COALESCE(completed_at,""),COALESCE(notes,""),COALESCE(instructions,""),COALESCE(CAST(legacy_record AS CHAR),"")', "WHERE source_system='fabrik'"),
-    fabrik_work: rowsum('work_log', 'id,COALESCE(client_id,""),COALESCE(task_id,""),details,duration_seconds,billable_seconds,COALESCE(billability,""),COALESCE(work_date,""),COALESCE(CAST(legacy_record AS CHAR),"")', "WHERE source_system='fabrik'"),
+    clients_original: rowsum('clients', 'id,source_system,source_id,COALESCE(CAST(legacy_record AS CHAR),"")', "WHERE source_system='fabrik'"),
+    contacts_original: rowsum('contacts', 'id,source_system,source_id,COALESCE(CAST(legacy_record AS CHAR),"")', "WHERE source_system='fabrik'"),
+    fabrik_tasks_locked: rowsum('tasks', 'id,source_id,title,COALESCE(instructions,""),COALESCE(pricing,""),COALESCE(chargeable,""),COALESCE(estimate_minutes,""),COALESCE(agreed_fee_ex_gst,""),COALESCE(legacy_billing_amount_ex_gst,""),COALESCE(billing_advised,""),COALESCE(invoice_number,""),COALESCE(invoice_reference,""),COALESCE(purchase_order_no,""),COALESCE(job_number,""),COALESCE(received_at,""),COALESCE(CAST(legacy_record AS CHAR),"")', "WHERE source_system='fabrik'"),
+    fabrik_work_locked: rowsum('work_log', 'id,source_id,details,duration_seconds,billable_seconds,COALESCE(rate_ex_gst,""),COALESCE(billed_amount_ex_gst,""),COALESCE(work_date,""),COALESCE(started_at,""),COALESCE(ended_at,""),COALESCE(staff_key,""),COALESCE(CAST(legacy_record AS CHAR),"")', "WHERE source_system='fabrik'"),
   };
   for (const t of ['legacy_clients', 'legacy_contacts', 'legacy_tasks', 'legacy_work_log', 'legacy_classification', 'legacy_enquiries']) out[t] = rowsum(t, 'source_id,row_sha256,CAST(source_record AS CHAR)');
   return out;
@@ -160,7 +164,9 @@ function protectedChecksums() {
   /* ================= layout at phone widths + desktop ================= */
   const routes = ['index.php?page=today', 'index.php?page=clients', 'index.php?page=client&id=' + S.client.id, 'index.php?page=tasks', 'index.php?page=task&id=' + S.openTask.id,
     'index.php?page=task&id=' + S.fabrikTask, 'index.php?page=work', 'index.php?page=enquiries', 'index.php?page=invoicing', 'index.php?page=items', 'index.php?page=more', 'index.php?page=check',
-    'add-work.php', 'add-work.php?client_id=' + S.client.id, 'add-enquiry.php', 'convert-enquiry.php?id=1', 'edit-task.php?id=2048', 'edit-enquiry.php?id=1'];
+    'add-work.php', 'add-work.php?client_id=' + S.client.id, 'add-enquiry.php', 'convert-enquiry.php?id=1', 'edit-task.php?id=2048', 'edit-enquiry.php?id=1',
+    'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
+    'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -182,7 +188,7 @@ function protectedChecksums() {
             wide: [...document.querySelectorAll('main *')].filter(e => e.getBoundingClientRect().right > de.clientWidth + 1 && getComputedStyle(e).position !== 'fixed').slice(0, 3).map(e => e.tagName + '.' + e.className) };
         });
         if (m.overflow) issues.push(`${u}: horizontal overflow ${m.wide.join(',')}`);
-        if (!/v0\.9\.0 · build/.test(m.version)) issues.push(`${u}: version label missing`);
+        if (m.version.trim() !== VERSION_LABEL) issues.push(`${u}: version label "${m.version}" (expected ${VERSION_LABEL})`);
         if (w < 760) {
           if (!m.navVisible || m.navLinks !== 5) issues.push(`${u}: bottom nav ${m.navVisible} links=${m.navLinks}`);
           if (m.navMinH < 44) issues.push(`${u}: nav tap target ${m.navMinH}px`);
@@ -282,7 +288,7 @@ function protectedChecksums() {
     const contactLinks = await P.$$eval('.contact-links a', as => as.map(a => a.getAttribute('href')));
     assert(contactLinks.some(h => h.startsWith('tel:') && h.replace(/\D/g, '').endsWith(S.contact.phone.replace(/\D/g, '').slice(-6))), 'contact tel link missing');
     const shownContacts = await P.locator('.contact-list .contact-card').count();
-    const dbActive = num(`SELECT COUNT(*) FROM contacts WHERE client_id=${S.client.id} AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.status')),'')<>'archive'`);
+    const dbActive = num(`SELECT COUNT(*) FROM contacts WHERE client_id=${S.client.id} AND COALESCE(status,'')<>'archive'`);
     assert(shownContacts === dbActive, `contacts shown ${shownContacts} vs db ${dbActive}`);
     const dbOpen = num(`SELECT COUNT(*) FROM tasks t WHERE client_id=${S.client.id} AND NOT (${closed('t.status')}) AND completed_at IS NULL`);
     const shownOpen = parseInt(await P.locator('.client-summary div:first-child strong').innerText(), 10);
@@ -471,17 +477,6 @@ function protectedChecksums() {
     const payload = one(`SELECT payload FROM activity_events WHERE task_id=${tid} AND event_kind='task_updated' ORDER BY id DESC LIMIT 1`);
     assert(payload && payload.includes('"status"') && payload.includes('"previous"'), 'audit payload ' + payload);
   });
-  await test('D02', 'Imported (Fabrik) tasks stay read-only, even to a forged POST', async () => {
-    await go(P, 'edit-task.php?id=' + S.fabrikTask);
-    assert(await P.locator('form.form').count() === 0 && /read-only/.test(await P.locator('main').innerText()), 'edit form offered');
-    const before = one(`SELECT CRC32(CONCAT_WS('|',title,COALESCE(status,''),COALESCE(instructions,''))) FROM tasks WHERE id=${S.fabrikTask}`);
-    await go(P, 'edit-task.php?id=2048'); const csrf = await P.inputValue('input[name=csrf]').catch(() => null);
-    const tok = csrf || await P.evaluate(() => (document.querySelector('input[name=csrf]') || {}).value);
-    const r = await P.request.post(BASE + 'edit-task.php', { form: { id: String(S.fabrikTask), csrf: tok, title: 'HACKED', status: 'completed', priority: 'low' } });
-    const body = await r.text();
-    assert(/read-only/.test(body), 'no read-only error in response');
-    assert(one(`SELECT CRC32(CONCAT_WS('|',title,COALESCE(status,''),COALESCE(instructions,''))) FROM tasks WHERE id=${S.fabrikTask}`) === before, 'imported task changed!');
-  });
   await test('D03', 'Converted enquiries cannot be edited; unconverted ones save with an audit event', async () => {
     await go(P, 'edit-enquiry.php?id=' + newEnquiry);
     assert(await P.locator('form.form').count() === 0, 'converted enquiry editable');
@@ -492,6 +487,167 @@ function protectedChecksums() {
     await Promise.all([P.waitForNavigation(), P.click('button.save')]);
     assert(one(`SELECT title FROM enquiries WHERE id=${open}`) === 'Test D03 edited title', 'not saved');
     assert(num(`SELECT COUNT(*) FROM activity_events WHERE enquiry_id=${open} AND event_kind='enquiry_updated'`) >= 1, 'no audit');
+  });
+
+  /* ================= v0.10.0 editing ================= */
+  const ver = async page => ({ csrf: await page.inputValue('input[name=csrf]'), ver: await page.inputValue('input[name=ver]') });
+  const save = async page => { await Promise.all([page.waitForNavigation(), page.click('button.save')]); };
+  const setSelect = async (page, sel, v) => page.evaluate(([s, v]) => { const e = document.querySelector(s); e.value = String(v); e.dispatchEvent(new Event('cm-sync')); e.dispatchEvent(new Event('change', { bubbles: true })); }, [sel, v]);
+  const openDetails = async (page, text) => page.evaluate(t => { for (const d of document.querySelectorAll('details')) if (d.querySelector('summary').textContent.includes(t)) d.open = true; }, text);
+  const audit = (where, kind) => one(`SELECT payload FROM activity_events WHERE ${where} AND event_kind='${kind}' ORDER BY id DESC LIMIT 1`);
+
+  await test('X01', 'Edit an imported client: saved to the new columns, original record untouched, audited, finder finds the new phone at once', async () => {
+    const cid = S.client.id;
+    const origBefore = one(`SELECT CRC32(CAST(legacy_record AS CHAR)) FROM clients WHERE id=${cid}`);
+    // warm the finder cache first, so the test proves the cache is refreshed after a save
+    await go(P, 'index.php?page=today'); await P.fill('#finder-q', S.client.name.slice(0, 4)); await P.waitForSelector('[data-finder-results] .fr-item');
+    await go(P, 'edit-client.php?id=' + cid);
+    await P.fill('#phone', '03 555 0199');
+    await openDetails(P, 'Notes'); await P.fill('#notes', 'Test X01 note\nsecond line');
+    await save(P);
+    assert(P.url().includes('page=client&id=' + cid) && /Saved/.test(await P.locator('.success').innerText()), 'no saved message: ' + P.url());
+    const r = sql(`SELECT phone,notes LIKE 'Test X01 note%second line',updated_at IS NOT NULL FROM clients WHERE id=${cid}`)[0];
+    assert(r[0] === '03 555 0199' && r[1] === '1' && r[2] === '1', 'row ' + r);
+    assert(one(`SELECT CRC32(CAST(legacy_record AS CHAR)) FROM clients WHERE id=${cid}`) === origBefore, 'legacy_record changed');
+    const p = JSON.parse(audit(`client_id=${cid}`, 'client_updated'));
+    assert(p.phone && p.phone.current === '03 555 0199' && 'previous' in p.phone && p.notes, 'audit ' + JSON.stringify(p));
+    assert((await P.locator('main').innerText()).includes('03 555 0199'), 'new phone not shown on client page');
+    await go(P, 'index.php?page=today'); await P.fill('#finder-q', '5550199');
+    await P.waitForSelector('[data-finder-results] .fr-item', { timeout: 3000 });
+    const names = await P.$$eval('[data-finder-results] .fr-item strong', e => e.map(x => x.textContent));
+    assert(names.some(n => n.includes(S.client.name)), 'finder did not find new phone: ' + names.join('|'));
+  });
+  await test('X02', 'Archive and restore a client: tag shown, hidden from Active list, still found under All', async () => {
+    const cid = S.anyClient, name = one(`SELECT name FROM clients WHERE id=${cid}`);
+    await go(P, 'edit-client.php?id=' + cid); await P.selectOption('#status', 'archive'); await save(P);
+    assert(one(`SELECT status FROM clients WHERE id=${cid}`) === 'archive', 'not archived');
+    assert(await P.locator('.client-head .tag').count() === 1, 'no Archived tag');
+    await go(P, 'index.php?page=clients&show=active&q=' + encodeURIComponent(name));
+    const active = await P.$$eval('.client-list a.record', a => a.map(x => x.getAttribute('href')));
+    assert(!active.some(h => h.endsWith('id=' + cid)), 'archived client in Active list');
+    await go(P, 'index.php?page=clients&show=all&q=' + encodeURIComponent(name));
+    const all = await P.$$eval('.client-list a.record', a => a.map(x => x.getAttribute('href')));
+    assert(all.some(h => h.endsWith('id=' + cid)), `not in All: ${P.url()} -> ${all.join(',')} / ${await P.locator('[data-testid=client-count]').innerText()}`);
+    await go(P, 'edit-client.php?id=' + cid); await P.selectOption('#status', 'active'); await save(P);
+    assert(one(`SELECT status FROM clients WHERE id=${cid}`) === 'active', 'not restored');
+    assert(/Client restored/.test(one(`SELECT summary FROM activity_events WHERE client_id=${cid} AND event_kind='client_updated' ORDER BY id DESC LIMIT 1`)), 'restore audit');
+  });
+  let x03 = 0;
+  await test('X03', 'New client: created as an app record; same name again is blocked until "Create anyway"', async () => {
+    const before = num('SELECT COUNT(*) FROM clients');
+    await go(P, 'edit-client.php'); await P.fill('#name', 'Test X03 Ltd'); await P.fill('#email', 'x03@example.nz'); await save(P);
+    x03 = +one(`SELECT id FROM clients WHERE name='Test X03 Ltd'`);
+    assert(x03 && P.url().includes('page=client&id=' + x03), 'not created/redirected');
+    assert(one(`SELECT CONCAT(source_system,'|',status,'|',email) FROM clients WHERE id=${x03}`) === 'app|active|x03@example.nz', 'row');
+    assert(audit(`client_id=${x03}`, 'client_created'), 'no audit');
+    await go(P, 'edit-client.php'); await P.fill('#name', 'test x03 ltd'); await save(P);
+    assert(/already exists/.test(await P.locator('.alert').innerText()) && num('SELECT COUNT(*) FROM clients') === before + 1, 'duplicate not blocked');
+    await P.check('input[name=confirm_duplicate]'); await save(P);
+    assert(num('SELECT COUNT(*) FROM clients') === before + 2, 'create anyway failed');
+  });
+  await test('X04', 'Add a contact (types as checkboxes), then move it to another client: both clients audited', async () => {
+    await go(P, 'edit-contact.php?client_id=' + x03);
+    await P.fill('#first_name', 'Xena'); await P.fill('#last_name', 'Tester'); await P.fill('#mobile', '021 555 0404');
+    await P.check('input[value="accounts"]'); await P.check('input[value="domain owner"]'); await P.fill('#contact_type_other', 'billing');
+    await save(P);
+    const k = sql(`SELECT id,display_name,contact_type,client_id,source_system FROM contacts WHERE display_name='Xena Tester'`)[0];
+    assert(k && k[2] === 'accounts, domain owner, billing' && +k[3] === x03 && k[4] === 'app', 'row ' + k);
+    assert((await P.locator('.contact-list').innerText()).includes('Xena Tester'), 'not shown on client page');
+    await go(P, 'edit-contact.php?id=' + k[0]); await setSelect(P, '[data-client-select]', S.client.id); await save(P);
+    assert(+one(`SELECT client_id FROM contacts WHERE id=${k[0]}`) === S.client.id, 'not moved');
+    assert(audit(`client_id=${S.client.id}`, 'contact_updated') && audit(`client_id=${x03}`, 'contact_moved'), 'move audits');
+  });
+  await test('X05', 'A contact with no client can be given one from the Clients page', async () => {
+    const u = sql(`SELECT id,CRC32(CAST(legacy_record AS CHAR)) FROM contacts WHERE client_id IS NULL ORDER BY id LIMIT 1`)[0];
+    if (!u) { note('no unlinked contacts'); return; }
+    await go(P, 'index.php?page=clients'); await openDetails(P, 'Contacts without a client');
+    await Promise.all([P.waitForNavigation(), P.click(`a[href="edit-contact.php?id=${u[0]}"]`)]);
+    await setSelect(P, '[data-client-select]', S.client.id); await save(P);
+    assert(+one(`SELECT client_id FROM contacts WHERE id=${u[0]}`) === S.client.id, 'not linked');
+    assert(one(`SELECT CRC32(CAST(legacy_record AS CHAR)) FROM contacts WHERE id=${u[0]}`) === u[1], 'legacy_record changed');
+  });
+  await test('X06', 'Two people editing the same client: the second save is refused, nothing is overwritten', async () => {
+    const cid = S.anyClient;
+    const other = await newSession(375);
+    await go(P, 'edit-client.php?id=' + cid); await go(other.page, 'edit-client.php?id=' + cid);
+    await other.page.fill('#phone', '03 555 0606'); await save(other.page);
+    await openDetails(P, 'Notes'); await P.fill('#notes', 'Test X06 should not save'); await save(P);
+    assert(/changed by someone else/.test(await P.locator('.alert').innerText()), 'no stale warning');
+    const r = sql(`SELECT phone,COALESCE(notes,'') FROM clients WHERE id=${cid}`)[0];
+    assert(r[0] === '03 555 0606' && !r[1].includes('X06'), 'overwritten: ' + r);
+    await other.ctx.close();
+  });
+  await test('X07', 'Imported task: status/completed/notes/client save; title, instructions and billing stay locked even to a forged POST', async () => {
+    const tid = +one(`SELECT id FROM tasks WHERE source_system='fabrik' AND client_id IS NOT NULL AND NOT (${closed('status')}) ORDER BY id LIMIT 1`);
+    const lockedBefore = one(`SELECT CRC32(CONCAT_WS('|',title,COALESCE(instructions,''),COALESCE(agreed_fee_ex_gst,''),COALESCE(invoice_number,''),COALESCE(pricing,''))) FROM tasks WHERE id=${tid}`);
+    await go(P, 'edit-task.php?id=' + tid);
+    assert(await P.locator('#title').count() === 0 && await P.locator('#agreed_fee_ex_gst').count() === 0, 'locked fields offered');
+    await P.selectOption('#status', 'completed'); await openDetails(P, 'Notes'); await P.fill('#notes', 'Test X07 closed after migration');
+    await save(P);
+    const r = sql(`SELECT status,DATE(completed_at),notes FROM tasks WHERE id=${tid}`)[0];
+    assert(r[0] === 'completed' && r[1] === todayNZ && r[2] === 'Test X07 closed after migration', 'row ' + r);
+    await go(P, 'edit-task.php?id=' + tid); const t = await ver(P);
+    const resp = await P.request.post(BASE + 'edit-task.php', { maxRedirects: 0, form: { id: String(tid), csrf: t.csrf, ver: t.ver, status: 'completed', priority: '', required_by: '', completed_on: todayNZ, client_id: '', notes: 'x', title: 'HACKED', instructions: 'HACKED', agreed_fee_ex_gst: '999', pricing: 'hourly' } });
+    assert([303, 200].includes(resp.status()), 'status ' + resp.status());
+    assert(one(`SELECT CRC32(CONCAT_WS('|',title,COALESCE(instructions,''),COALESCE(agreed_fee_ex_gst,''),COALESCE(invoice_number,''),COALESCE(pricing,''))) FROM tasks WHERE id=${tid}`) === lockedBefore, 'LOCKED FIELD CHANGED');
+  });
+  await test('X08', 'New task from a client page with pricing; invalid fee refused', async () => {
+    await go(P, 'index.php?page=client&id=' + S.client.id);
+    await Promise.all([P.waitForNavigation(), P.click('a[href^="edit-task.php?client_id="]')]);
+    await P.fill('#title', 'Test X08 new task'); await openDetails(P, 'Pricing');
+    await P.selectOption('#pricing', 'set'); await P.fill('#agreed_fee_ex_gst', '12.345'); await save(P);
+    assert(/2 decimals/.test(await P.locator('.alert').innerText()) && !one(`SELECT id FROM tasks WHERE title='Test X08 new task'`), 'bad fee accepted');
+    await P.fill('#agreed_fee_ex_gst', '450.00'); await P.fill('#estimate_minutes', '120'); await save(P);
+    const r = sql(`SELECT id,client_id,source_system,pricing,agreed_fee_ex_gst,estimate_minutes,status FROM tasks WHERE title='Test X08 new task'`)[0];
+    assert(r && +r[1] === S.client.id && r[2] === 'app' && r[3] === 'set' && r[4] === '450.00' && r[5] === '120' && r[6] === 'open', 'row ' + r);
+    assert(P.url().includes('page=task&id=' + r[0]) && audit(`task_id=${r[0]}`, 'task_created'), 'redirect/audit');
+  });
+  await test('X09', 'Edit a new Work Log entry: duration, client, billing decision and billable time saved; billable > worked refused', async () => {
+    await go(P, 'edit-work.php?id=4096');
+    await setSelect(P, '[data-client-select]', S.client.id);
+    await P.fill('#hours', '1'); await P.fill('#minutes', '0'); await P.fill('#seconds', '0');
+    await P.selectOption('#billability', 'billable'); await P.fill('#bill_hours', '2'); await save(P);
+    assert(/cannot exceed/.test(await P.locator('.alert').innerText()), 'over-billable accepted');
+    await go(P, 'edit-work.php?id=4096'); await setSelect(P, '[data-client-select]', S.client.id);
+    await P.fill('#hours', '1'); await P.fill('#minutes', '0'); await P.selectOption('#billability', 'billable'); await P.fill('#bill_hours', '0'); await P.fill('#bill_minutes', '45');
+    await save(P);
+    const r = sql(`SELECT duration_seconds,billable_seconds,billability,client_id FROM work_log WHERE id=4096`)[0];
+    assert(+r[0] === 3600 && +r[1] === 2700 && r[2] === 'billable' && +r[3] === S.client.id, 'row ' + r);
+    assert(JSON.parse(audit('work_log_id=4096', 'work_log_updated')).duration_seconds, 'audit');
+  });
+  await test('X10', 'Imported Work Log entry: task link and billing decision save; description and time stay locked even to a forged POST', async () => {
+    const wid = +one(`SELECT id FROM work_log WHERE source_system='fabrik' AND task_id IS NULL ORDER BY id LIMIT 1`);
+    const lockedBefore = one(`SELECT CRC32(CONCAT_WS('|',details,duration_seconds,billable_seconds,COALESCE(billed_amount_ex_gst,''),COALESCE(staff_key,''))) FROM work_log WHERE id=${wid}`);
+    await go(P, 'edit-work.php?id=' + wid);
+    assert(await P.locator('#details').count() === 0 && await P.locator('#hours').count() === 0, 'locked fields offered');
+    const opt = await P.$$eval('#task_id option', o => o.map(x => x.value).filter(Boolean));
+    await P.selectOption('#task_id', opt[0]); await P.selectOption('#billability', 'non_billable'); await save(P);
+    const r = sql(`SELECT task_id,billability FROM work_log WHERE id=${wid}`)[0];
+    assert(r[0] === opt[0] && r[1] === 'non_billable', 'row ' + r);
+    await go(P, 'edit-work.php?id=' + wid); const t = await ver(P);
+    await P.request.post(BASE + 'edit-work.php', { maxRedirects: 0, form: { id: String(wid), csrf: t.csrf, ver: t.ver, task_id: opt[0], client_id: '', billability: 'review', details: 'HACKED', hours: '9', minutes: '0', seconds: '0', work_date: '2001-01-01', staff: 'hacker' } });
+    assert(one(`SELECT CRC32(CONCAT_WS('|',details,duration_seconds,billable_seconds,COALESCE(billed_amount_ex_gst,''),COALESCE(staff_key,''))) FROM work_log WHERE id=${wid}`) === lockedBefore, 'LOCKED FIELD CHANGED');
+  });
+  await test('X11', 'Unconverted enquiry: client can be changed, audited', async () => {
+    let eid = +one(`SELECT e.id FROM enquiries e WHERE e.status='enquiry' AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.enquiry_id=e.id) ORDER BY e.id LIMIT 1`);
+    if (!eid) { sql(`INSERT INTO enquiries (client_id,title,priority,status) VALUES (${S.anyClient},'Test X11 enquiry','normal','enquiry')`); eid = num('SELECT MAX(id) FROM enquiries'); }
+    await go(P, 'edit-enquiry.php?id=' + eid); await setSelect(P, '[data-client-select]', x03); await save(P);
+    assert(+one(`SELECT client_id FROM enquiries WHERE id=${eid}`) === x03, 'client not changed');
+    assert((audit(`enquiry_id=${eid}`, 'enquiry_updated') || '').includes('client_id'), 'audit');
+  });
+  await test('X12', 'Giving a new entry a billing decision removes it from Today\'s "Work to review"', async () => {
+    if (!num(`SELECT COUNT(*) FROM work_log WHERE billability='review' AND (source_system IS NULL OR source_system<>'fabrik')`))
+      sql(`INSERT INTO work_log (source_system,source_id,details,work_date,duration_seconds,billable_seconds,billability) VALUES ('m5','x12-${Date.now()}','Test X12 entry','${todayNZ}',600,0,'review')`);
+    const wid = +one(`SELECT id FROM work_log WHERE billability='review' AND (source_system IS NULL OR source_system<>'fabrik') ORDER BY id DESC LIMIT 1`);
+    const before = num(`SELECT COUNT(*) FROM work_log WHERE billability='review' AND (source_system IS NULL OR source_system<>'fabrik')`);
+    await go(P, 'index.php?page=work&filter=review');
+    await P.click(`summary:has-text("${one(`SELECT details FROM work_log WHERE id=${wid}`).replace(/"/g, '')}")`);
+    await Promise.all([P.waitForNavigation(), P.click(`a[href^="edit-work.php?id=${wid}&"]`)]);
+    await P.selectOption('#billability', 'non_billable'); await save(P);
+    assert(P.url().includes('page=work') && P.url().includes('filter=review'), 'did not return to the filtered list: ' + P.url());
+    await go(P, 'index.php?page=today');
+    const txt = await P.locator('.review-links').innerText().catch(() => '');
+    assert(before - 1 === 0 ? !txt.includes('billing decision') : txt.includes((before - 1) + ' new'), `review count not updated: "${txt}" (expected ${before - 1})`);
   });
 
   /* ================= Today correctness ================= */
@@ -533,7 +689,7 @@ function protectedChecksums() {
     const head = await P.locator('.check-head').innerText();
     const failed = await P.$$eval('.checklist li.bad', ls => ls.map(l => l.textContent));
     assert(/All checks passed/.test(head), 'failed: ' + failed.join(' | '));
-    assert(/v0\.9\.0 · build 20261030\.3/.test(await P.locator('[data-testid=check-version]').innerText()), 'version');
+    assert((await P.locator('[data-testid=check-version]').innerText()).trim() === VERSION_LABEL, 'version');
   });
   await test('M03', 'Keyboard: first Tab reaches "Skip to content"; finder shows a visible focus ring', async () => {
     const { ctx, page } = await newSession(DESKTOP);
@@ -555,7 +711,7 @@ function protectedChecksums() {
   await shared.ctx.close();
 
   /* ================= historical data untouched ================= */
-  await test('P01', 'Imported clients, contacts, tasks, work entries and all six legacy archives are byte-for-byte unchanged', async () => {
+  await test('P01', 'Original imported records, locked task/work fields and all six legacy archives are byte-for-byte unchanged after every edit test', async () => {
     const after = protectedChecksums(); const diffs = Object.keys(before).filter(k => before[k] !== after[k]);
     note(Object.entries(after).map(([k, v]) => `${k}=${v.split(':')[0]}`).join(', '));
     assert(!diffs.length, 'changed: ' + diffs.map(k => `${k} ${before[k]} -> ${after[k]}`).join('; '));

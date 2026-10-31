@@ -15,7 +15,7 @@ $FIELDS = ['client_id', 'first_name', 'middle_name', 'last_name', 'position', 'c
 $LIMITS = ['first_name' => 100, 'middle_name' => 100, 'last_name' => 100, 'position' => 150, 'contact_type' => 255, 'email' => 255, 'phone' => 64, 'mobile' => 64, 'contact_method' => 40, 'status' => 30, 'notes' => 20000, 'client_id' => 20];
 $error = '';
 $preClient = filter_var($_GET['client_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
-$k = $id ? oneRow($pdo, 'SELECT * FROM contacts WHERE id=?', [$id]) : array_fill_keys($FIELDS, null) + ['client_id' => $preClient, 'status' => 'active'];
+$k = $id ? oneRow($pdo, 'SELECT * FROM contacts WHERE id=?', [$id]) : array_merge(array_fill_keys($FIELDS, null), ['client_id' => $preClient, 'status' => 'active']);
 if ($id && !$k) { http_response_code(404); exit('Contact not found.'); }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

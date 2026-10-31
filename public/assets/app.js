@@ -20,6 +20,8 @@
     return n;
   }
   var BUILD = (document.querySelector('meta[name="cloake-build"]') || {}).content || '';
+  // After any successful save, drop the cached client index so edits show up in the finder at once.
+  if (document.querySelector('.success[role="status"]') || /[?&]saved=1\b/.test(location.search)) { try { sessionStorage.removeItem('cm_client_index'); } catch (e) { } }
 
   /* ---------------- client index (shared by finder and pickers) ---------------- */
   var indexPromise = null;

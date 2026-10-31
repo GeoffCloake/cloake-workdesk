@@ -18,7 +18,7 @@ $IMPORTED_EDITABLE = ['status', 'completed_at', 'required_by', 'priority', 'note
 $APP_EDITABLE = ['title', 'instructions', 'status', 'completed_at', 'required_by', 'priority', 'notes', 'client_id', 'pricing', 'agreed_fee_ex_gst', 'estimate_minutes'];
 $error = '';
 $preClient = filter_var($_GET['client_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
-$t = $id ? oneRow($pdo, 'SELECT * FROM tasks WHERE id=?', [$id]) : array_fill_keys($APP_EDITABLE, null) + ['client_id' => $preClient, 'status' => 'open', 'priority' => 'normal', 'legacy_record' => null, 'source_system' => 'app'];
+$t = $id ? oneRow($pdo, 'SELECT * FROM tasks WHERE id=?', [$id]) : array_merge(array_fill_keys($APP_EDITABLE, null), ['client_id' => $preClient, 'status' => 'open', 'priority' => 'normal', 'legacy_record' => null, 'source_system' => 'app']);
 if ($id && !$t) { http_response_code(404); exit('Task not found.'); }
 $imported = $id && $t['legacy_record'] !== null;
 $editable = $imported ? $IMPORTED_EDITABLE : $APP_EDITABLE;

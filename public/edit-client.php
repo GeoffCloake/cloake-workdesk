@@ -14,7 +14,7 @@ $FIELDS = ['name', 'business_name', 'status', 'email', 'phone', 'contact_method'
 $LIMITS = ['name' => 255, 'business_name' => 255, 'status' => 20, 'email' => 255, 'phone' => 64, 'contact_method' => 40, 'physical_city_town' => 120, 'physical_country' => 80,
     'postal_city_town' => 120, 'postal_code' => 20, 'postal_country' => 80, 'xero_contact_id' => 64, 'notes' => 20000];
 $error = ''; $dupes = [];
-$c = $id ? oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$id]) : array_fill_keys($FIELDS, null) + ['status' => 'active', 'physical_country' => 'New Zealand', 'postal_country' => 'New Zealand'];
+$c = $id ? oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$id]) : array_merge(array_fill_keys($FIELDS, null), ['status' => 'active', 'physical_country' => 'New Zealand', 'postal_country' => 'New Zealand']);
 if ($id && !$c) { http_response_code(404); exit('Client not found.'); }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
