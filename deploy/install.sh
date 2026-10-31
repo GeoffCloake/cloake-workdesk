@@ -75,7 +75,17 @@ say "Package: $PKG"; say "Live:    $LIVE"; [ "$DRY" = 1 ] && say "(dry run — n
 say "PHP: $("$PHP" -r 'echo PHP_VERSION;')"
 "$PHP" -r 'exit(version_compare(PHP_VERSION,"8.0.0",">=")?0:1);' || die "PHP 8.0+ required (set CM_PHP=/opt/cpanel/ea-php8X/root/usr/bin/php)"
 LINT_PHPS=("$PHP")
-for p in $(ls -d /opt/cpanel/ea-php8*/root/usr/bin/php 2>/dev/null | sort -V); do [ "$p" != "$PHP" ] && LINT_PHPS+=("$p"); done
+# Extra PHP 8 binaries for the syntax check. Each must itself report PHP 8+ (on some cPanel servers a path under
+# ea-php8* resolves to the system default, e.g. 7.4, which would wrongly reject PHP 8 syntax). Same version only once.
+LINT_SEEN=" $("$PHP" -r 'echo PHP_VERSION;') "
+for p in $(ls -d /opt/cpanel/ea-php8*/root/usr/bin/php 2>/dev/null | sort -V); do
+  [ "$p" != "$PHP" ] || continue
+  v="$("$p" -r 'echo version_compare(PHP_VERSION,"8.0.0",">=") ? PHP_VERSION : "";' 2>/dev/null || true)"
+  if [ -z "$v" ]; then echo "  lint: skipped $p (not PHP 8)" >>"$LOG"; continue; fi
+  case "$LINT_SEEN" in *" $v "*) continue ;; esac
+  LINT_SEEN="$LINT_SEEN$v "; LINT_PHPS+=("$p")
+done
+say "Syntax check will use PHP:$LINT_SEEN"
 [ -f "$PKG/MANIFEST_SHA256.txt" ] || die "MANIFEST_SHA256.txt missing from package"
 ( cd "$PKG" && sha256sum -c --quiet MANIFEST_SHA256.txt ) >>"$LOG" 2>&1 || die "package files do not match MANIFEST_SHA256.txt (incomplete upload?)"
 say "Package integrity: OK ($(grep -c . "$PKG/MANIFEST_SHA256.txt") files)"
