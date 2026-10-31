@@ -259,3 +259,21 @@ label.check:has(input:checked){border-color:var(--accent);background:#eef5f0}
 .panel.locked{background:#f6f7f4;border-style:dashed}
 .row-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
 .raw-record dt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+
+/* ---------- v0.10.0 build 2: Fabrik-style filters, totals, task groups ---------- */
+.filters{margin:4px 0 8px}
+.filter-row{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+.filter-row label{display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:700;color:var(--muted);flex:1 1 130px;min-width:0}
+.filter-row select,.filter-row input{min-height:40px;font-size:15px;padding:6px 10px}
+.list-meta{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.list-meta a{font-weight:700;color:var(--accent)}
+.totals{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;background:#fff;border:1px solid var(--line);border-radius:11px;padding:10px 13px;margin:8px 0;font-size:14px}
+.totals strong{font-size:16px}
+.totals small{flex-basis:100%;color:var(--muted);font-size:12px}
+fieldset.group{border:1px solid var(--line);border-radius:12px;padding:4px 13px 8px;margin:14px 0;background:#fcfcfa}
+fieldset.group>legend{font-size:13px;font-weight:760;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding:0 6px}
+legend.sub{font-size:14px;font-weight:680;text-transform:none;letter-spacing:0;color:var(--ink)}
+.field.narrow{max-width:220px}
+.tag-hot{color:#8a2a14;background:#fbe3dc}
+.task-facts{background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 12px;margin:10px 0}
+.task-facts:empty{display:none}

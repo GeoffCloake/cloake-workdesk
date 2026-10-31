@@ -10,11 +10,13 @@ cm_require_login();
 $pdo = cm_pdo();
 $id = m7id();
 $FIELDS = ['name', 'business_name', 'status', 'email', 'phone', 'contact_method', 'physical_address_1', 'physical_address_2', 'physical_city_town', 'physical_country',
-    'postal_address_1', 'postal_address_2', 'postal_address_3', 'postal_city_town', 'postal_code', 'postal_country', 'xero_contact_id', 'notes'];
+    'postal_address_1', 'postal_address_2', 'postal_address_3', 'postal_city_town', 'postal_region', 'postal_code', 'postal_country', 'xero_contact_id', 'notes', 'credit_approved', 'comments'];
 $LIMITS = ['name' => 255, 'business_name' => 255, 'status' => 20, 'email' => 255, 'phone' => 64, 'contact_method' => 40, 'physical_city_town' => 120, 'physical_country' => 80,
-    'postal_city_town' => 120, 'postal_code' => 20, 'postal_country' => 80, 'xero_contact_id' => 64, 'notes' => 20000];
+    'postal_city_town' => 120, 'postal_region' => 80, 'credit_approved' => 10, 'comments' => 20000, 'postal_code' => 20, 'postal_country' => 80, 'xero_contact_id' => 64, 'notes' => 20000];
 $error = ''; $dupes = [];
-$c = $id ? oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$id]) : array_merge(array_fill_keys($FIELDS, null), ['status' => 'active', 'physical_country' => 'New Zealand', 'postal_country' => 'New Zealand']);
+$has002 = (bool)oneRow($pdo, "SELECT 1 x FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='clients' AND COLUMN_NAME='credit_approved'");
+if (!$has002) $FIELDS = array_values(array_diff($FIELDS, ['postal_region', 'credit_approved', 'comments']));
+$c = $id ? oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$id]) : array_merge(array_fill_keys($FIELDS, null), ['status' => 'active', 'physical_country' => 'New Zealand', 'postal_country' => 'New Zealand', 'comments' => null, 'credit_approved' => null, 'postal_region' => null]);
 if ($id && !$c) { http_response_code(404); exit('Client not found.'); }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -26,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!in_array($v['status'], ['active', 'archive'], true)) throw new InvalidArgumentException('Invalid status.');
         if ($v['email'] !== '' && !validEmail($v['email'])) throw new InvalidArgumentException('Email address does not look valid.');
         if (!array_key_exists($v['contact_method'], CM_CONTACT_METHODS)) throw new InvalidArgumentException('Invalid preferred contact method.');
+        if ($has002 && !in_array($v['credit_approved'], ['', 'yes', 'no'], true)) throw new InvalidArgumentException('Invalid credit approved value.');
         $new = array_map('cm_nullable', $v); $new['name'] = $v['name']; $new['status'] = $v['status'];
         $pdo->beginTransaction();
         if ($id) {
@@ -75,8 +78,11 @@ cm_page_start($id ? 'Edit client' : 'New client', 'clients', ['back' => $id ? [r
 <div class="pair"><div class="field"><label for="contact_method">Preferred contact</label><select id="contact_method" name="contact_method"><?php foreach (CM_CONTACT_METHODS as $k => $l): ?><option value="<?=h($k)?>"<?=(string)($c['contact_method'] ?? '') === $k ? ' selected' : ''?>><?=h($l)?></option><?php endforeach; ?><?php if (!array_key_exists((string)($c['contact_method'] ?? ''), CM_CONTACT_METHODS)): ?><option value="<?=h($c['contact_method'])?>" selected><?=h($c['contact_method'])?></option><?php endif; ?></select></div>
 <div class="field"><label for="status">Status</label><select id="status" name="status"><option value="active"<?=($c['status'] ?? 'active') !== 'archive' ? ' selected' : ''?>>Active</option><option value="archive"<?=($c['status'] ?? '') === 'archive' ? ' selected' : ''?>>Archived</option></select></div></div>
 <details<?=($c['physical_address_1'] ?? '') . ($c['physical_city_town'] ?? '') !== '' ? ' open' : ''?>><summary>Physical address</summary><?php $input('physical_address_1', 'Address line 1'); $input('physical_address_2', 'Address line 2'); ?><div class="pair"><?php $input('physical_city_town', 'Town / city'); $input('physical_country', 'Country'); ?></div></details>
-<details<?=($c['postal_address_1'] ?? '') . ($c['postal_city_town'] ?? '') !== '' ? ' open' : ''?>><summary>Postal address</summary><?php $input('postal_address_1', 'Address line 1'); $input('postal_address_2', 'Address line 2'); $input('postal_address_3', 'Address line 3'); ?><div class="pair"><?php $input('postal_city_town', 'Town / city'); $input('postal_code', 'Postcode', ['im' => 'numeric']); ?></div><?php $input('postal_country', 'Country'); ?></details>
-<details<?=($c['notes'] ?? '') . ($c['xero_contact_id'] ?? '') !== '' ? ' open' : ''?>><summary>Notes &amp; Xero reference</summary><div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes" maxlength="20000"><?=h($c['notes'] ?? '')?></textarea></div><?php $input('xero_contact_id', 'Xero contact reference'); ?><p class="helper">Reference only. Nothing is sent to Xero.</p></details>
+<details<?=($c['postal_address_1'] ?? '') . ($c['postal_city_town'] ?? '') !== '' ? ' open' : ''?>><summary>Postal address</summary><?php $input('postal_address_1', 'Address line 1'); $input('postal_address_2', 'Address line 2'); $input('postal_address_3', 'Address line 3'); ?><div class="pair"><?php $input('postal_city_town', 'Town / city'); $input('postal_code', 'Postcode', ['im' => 'numeric']); ?></div><div class="pair"><?php if ($has002) $input('postal_region', 'Region'); $input('postal_country', 'Country'); ?></div></details>
+<details<?=($c['notes'] ?? '') . ($c['xero_contact_id'] ?? '') . ($c['comments'] ?? '') . ($c['credit_approved'] ?? '') !== '' ? ' open' : ''?>><summary>Notes, credit &amp; Xero reference</summary><div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes" maxlength="20000"><?=h($c['notes'] ?? '')?></textarea></div>
+<?php if ($has002): ?><div class="field"><label for="comments">Comments</label><textarea id="comments" name="comments" maxlength="20000"><?=h($c['comments'] ?? '')?></textarea></div>
+<div class="field narrow"><label for="credit_approved">Credit approved</label><select id="credit_approved" name="credit_approved"><?php foreach (['' => '—', 'yes' => 'Yes', 'no' => 'No'] as $k => $l): ?><option value="<?=h($k)?>"<?=(string)($c['credit_approved'] ?? '') === $k ? ' selected' : ''?>><?=h($l)?></option><?php endforeach; ?></select></div><?php endif; ?>
+<?php $input('xero_contact_id', 'Xero contact reference'); ?><p class="helper">Reference only. Nothing is sent to Xero.</p></details>
 <?php if (!$id && $dupes): ?><div class="field"><label class="check"><input type="checkbox" name="confirm_duplicate" value="1"> Create anyway — this is a different client</label></div><?php endif; ?>
 <button type="submit" class="save"><?=$id ? 'Save client' : 'Create client'?></button>
 <?php if ($id): ?><p class="helper">To stop using a client, set Status to Archived. Clients are never deleted, so their history stays intact.</p><?php endif; ?>

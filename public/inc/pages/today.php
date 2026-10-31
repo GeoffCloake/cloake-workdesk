@@ -13,7 +13,7 @@ $staleFrom = (new DateTimeImmutable($today))->modify('-' . CM_STALE_DAYS . ' day
 $soon = (new DateTimeImmutable($today))->modify('+7 days')->format('Y-m-d');
 
 // 1. Open tasks due within 7 days or overdue within the last 60 days.
-$due = allRows($pdo, "SELECT t.id,t.title,t.required_by,t.status,t.client_id,c.name client_name FROM tasks t LEFT JOIN clients c ON c.id=t.client_id
+$due = allRows($pdo, "SELECT t.*,c.name client_name FROM tasks t LEFT JOIN clients c ON c.id=t.client_id
     WHERE t.required_by IS NOT NULL AND DATE(t.required_by) BETWEEN ? AND ? AND NOT ($closed) AND t.completed_at IS NULL
     ORDER BY t.required_by ASC, t.id DESC LIMIT 12", [$staleFrom, $soon]);
 // 2. Newly created (non-imported) open tasks with no due date — otherwise they'd be invisible.
@@ -40,7 +40,7 @@ $queue = [];
 foreach ($due as $t) {
     $dd = substr((string)$t['required_by'], 0, 10); $late = $dd < $today;
     $queue[] = ['sort' => $dd, 'kind' => $late ? 'Overdue' : ($dd === $today ? 'Due today' : 'Due'), 'tone' => $late ? 'late' : 'due',
-        'title' => $t['title'], 'meta' => ($t['client_name'] ?? 'Unassigned') . ' · ' . cm_status_label($t['status']),
+        'title' => $t['title'], 'meta' => ($t['client_name'] ?? 'Unassigned') . ' · ' . cm_status_label($t['status']) . (!empty($t['assigned_to']) ? ' · ' . ucwords((string)$t['assigned_to']) : ''),
         'when' => niceDate($t['required_by']), 'href' => route('task', ['id' => $t['id']]),
         'act' => ['add-work.php?task_id=' . (int)$t['id'], 'Log work']];
 }

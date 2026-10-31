@@ -92,6 +92,7 @@ function subjects() {
   s.anyClient = +one(`SELECT id FROM clients WHERE LOWER(COALESCE(status,''))<>'archive' ORDER BY name LIMIT 1 OFFSET 3`);
   s.manyMatch = 'a';
   s.contactId = +one(`SELECT id FROM contacts WHERE client_id=${s.client.id} ORDER BY id LIMIT 1`);
+  s.staffTop = one(`SELECT TRIM(SUBSTRING_INDEX(assigned_to, ',', 1)) FROM tasks WHERE assigned_to IS NOT NULL GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1`) || 'geoff';
   s.fabrikWork = +one(`SELECT id FROM work_log WHERE source_system='fabrik' ORDER BY id LIMIT 1`);
   return s;
 }
@@ -166,7 +167,8 @@ function protectedChecksums() {
     'index.php?page=task&id=' + S.fabrikTask, 'index.php?page=work', 'index.php?page=enquiries', 'index.php?page=invoicing', 'index.php?page=items', 'index.php?page=more', 'index.php?page=check',
     'add-work.php', 'add-work.php?client_id=' + S.client.id, 'add-enquiry.php', 'convert-enquiry.php?id=1', 'edit-task.php?id=2048', 'edit-enquiry.php?id=1',
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
-    'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork];
+    'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
+    'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts'];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -597,7 +599,7 @@ function protectedChecksums() {
     await P.fill('#title', 'Test X08 new task'); await openDetails(P, 'Pricing');
     await P.selectOption('#pricing', 'set'); await P.fill('#agreed_fee_ex_gst', '12.345'); await save(P);
     assert(/2 decimals/.test(await P.locator('.alert').innerText()) && !one(`SELECT id FROM tasks WHERE title='Test X08 new task'`), 'bad fee accepted');
-    await P.fill('#agreed_fee_ex_gst', '450.00'); await P.fill('#estimate_minutes', '120'); await save(P);
+    await P.fill('#agreed_fee_ex_gst', '450.00'); await P.fill('#est_hours', '2'); await P.fill('#est_minutes', '0'); await save(P);
     const r = sql(`SELECT id,client_id,source_system,pricing,agreed_fee_ex_gst,estimate_minutes,status FROM tasks WHERE title='Test X08 new task'`)[0];
     assert(r && +r[1] === S.client.id && r[2] === 'app' && r[3] === 'set' && r[4] === '450.00' && r[5] === '120' && r[6] === 'open', 'row ' + r);
     assert(P.url().includes('page=task&id=' + r[0]) && audit(`task_id=${r[0]}`, 'task_created'), 'redirect/audit');
@@ -648,6 +650,110 @@ function protectedChecksums() {
     await go(P, 'index.php?page=today');
     const txt = await P.locator('.review-links').innerText().catch(() => '');
     assert(before - 1 === 0 ? !txt.includes('billing decision') : txt.includes((before - 1) + ' new'), `review count not updated: "${txt}" (expected ${before - 1})`);
+  });
+
+  /* ================= v0.10.0 build 2: Fabrik features ================= */
+  const csv = async url => { const r = await P.request.get(BASE + url); const b = await r.body(); return { status: r.status(), type: r.headers()['content-type'] || '', bom: b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF, rows: parseCsv(b.toString('utf8').replace(/^﻿/, '')) }; };
+  function parseCsv(t) { const rows = []; let row = [], cell = '', q = false; for (let i = 0; i < t.length; i++) { const ch = t[i]; if (q) { if (ch === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; } else if (ch === '"') q = true; else if (ch === ',') { row.push(cell); cell = ''; } else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else if (ch !== '\r') cell += ch; } if (cell !== '' || row.length) { row.push(cell); rows.push(row); } return rows; }
+
+  await test('Y01', 'New task with the Fabrik fields: contact list follows client, category → type, Action for, queue, domains, chargeable, h:mm estimate, invoice no, billing advised', async () => {
+    await go(P, 'edit-task.php');
+    await P.fill('#title', 'Test Y01 full task');
+    await setSelect(P, '[data-client-select]', S.client.id);
+    await P.waitForFunction(() => document.querySelectorAll('[data-contact-select] option').length > 1, null, { timeout: 4000 });
+    const kid = await P.$eval('[data-contact-select] option:nth-child(2)', o => o.value);
+    await P.selectOption('#contact_id', kid);
+    const cats = await P.$$eval('#task_category option', o => o.map(x => x.value).filter(Boolean));
+    assert(cats.length > 0, 'no categories');
+    const cat = cats.find(c => c.startsWith('Graphic')) || cats[0];
+    await P.selectOption('#task_category', cat);
+    const types = await P.$$eval('#task_type option', o => o.map(x => x.value).filter(Boolean));
+    const expected = sql(`SELECT TRIM(JSON_UNQUOTE(JSON_EXTRACT(source_record,'$.task_type'))) FROM legacy_classification WHERE TRIM(JSON_UNQUOTE(JSON_EXTRACT(source_record,'$.task_category')))='${esc(cat)}' AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(source_record,'$.task_type')))<>''`).map(r => r[0]);
+    assert(types.length === new Set(expected).size && types.every(t => expected.includes(t)), `types ${types} vs ${expected}`);
+    await P.selectOption('#task_type', types[0]);
+    await P.check('input[name="assigned_to[]"][value="geoff"]'); await P.fill('#assigned_other', 'Matt');
+    await P.selectOption('#priority', 'immediate'); await P.selectOption('#status', 'planned');
+    await P.fill('#queue', '5'); await P.fill('#domains', 'y01.example.nz'); await P.fill('#job_number', 'J-Y01');
+    await openDetails(P, 'Pricing'); await P.selectOption('#chargeable', 'yes'); await P.fill('#est_hours', '1'); await P.fill('#est_minutes', '30');
+    await P.fill('#invoice_number', 'INV-Y01'); await P.check('input[name=billing_advised]');
+    await save(P);
+    const r = sql(`SELECT contact_id,assigned_to,queue,task_category,task_type,domains,chargeable,estimate_minutes,invoice_number,billing_advised,priority,status,job_number FROM tasks WHERE title='Test Y01 full task'`)[0];
+    assert(r && r[0] === kid && r[1] === 'geoff, matt' && r[2] === '5' && r[3] === cat && r[4] === types[0] && r[5] === 'y01.example.nz' && r[6] === 'yes' && r[7] === '90' && r[8] === 'INV-Y01' && r[9] === '1' && r[10] === 'immediate' && r[11] === 'planned' && r[12] === 'J-Y01', 'row ' + r);
+    const page = await P.locator('main').innerText();
+    assert(page.includes('Geoff, Matt') && page.includes(cat), 'task page missing Action for / category');
+  });
+  await test('Y02', 'Imported task: Action for, queue and contact editable; a contact from another client is refused', async () => {
+    const tid = +one(`SELECT id FROM tasks WHERE source_system='fabrik' AND client_id IS NOT NULL AND NOT (${closed('status')}) ORDER BY id DESC LIMIT 1`);
+    await go(P, 'edit-task.php?id=' + tid);
+    for (const b of await P.$$('input[name="assigned_to[]"]')) if (await b.isChecked()) await b.uncheck();
+    await P.check('input[name="assigned_to[]"][value="roselyn"]'); await P.fill('#queue', '7'); await save(P);
+    const r = sql(`SELECT assigned_to,queue FROM tasks WHERE id=${tid}`)[0];
+    assert(r[0] === 'roselyn' && r[1] === '7', 'row ' + r);
+    const foreign = one(`SELECT k.id FROM contacts k JOIN tasks t ON t.id=${tid} WHERE k.client_id IS NOT NULL AND k.client_id<>t.client_id LIMIT 1`);
+    await go(P, 'edit-task.php?id=' + tid);
+    await P.evaluate(v => { const s = document.querySelector('#contact_id'); s.appendChild(new Option('forged', v)); s.value = v; }, foreign);
+    await save(P);
+    assert(/different client/.test(await P.locator('.alert').innerText()), 'foreign contact accepted');
+    assert(one(`SELECT COALESCE(contact_id,'') FROM tasks WHERE id=${tid}`) !== foreign, 'contact changed');
+  });
+  await test('Y03', 'Tasks list: Action for, priority and status filters match the database; queue sort is ascending', async () => {
+    const who = S.staffTop;
+    await go(P, `index.php?page=tasks&status=all&assigned=${encodeURIComponent(who)}`);
+    const shown = await P.locator('.compact-list a.record').count();
+    const dbn = num(`SELECT COUNT(*) FROM tasks WHERE CONCAT(', ', LOWER(COALESCE(assigned_to,'')), ',') LIKE '%, ${esc(who)},%'`);
+    assert(shown === Math.min(dbn, 100), `assigned ${who}: ${shown} vs ${dbn}`);
+    await go(P, 'index.php?page=tasks&status=all&priority=immediate');
+    assert(await P.locator('.compact-list a.record').count() === Math.min(num(`SELECT COUNT(*) FROM tasks WHERE LOWER(COALESCE(priority,''))='immediate'`), 100), 'priority filter');
+    await go(P, 'index.php?page=tasks&status=completed');
+    assert(await P.locator('.compact-list a.record').count() === Math.min(num(`SELECT COUNT(*) FROM tasks WHERE LOWER(REPLACE(COALESCE(status,''),'_',' '))='completed'`), 100), 'exact status filter');
+    await go(P, 'index.php?page=tasks&status=all&sort=queue');
+    const ids = await P.$$eval('.compact-list a.record', a => a.slice(0, 40).map(x => +new URL(x.href).searchParams.get('id')));
+    const qs = ids.map(i => { const v = one(`SELECT queue FROM tasks WHERE id=${i}`); return v === null ? Infinity : +v; });
+    assert(qs.every((v, i) => i === 0 || qs[i - 1] <= v), 'queue order ' + qs.join(','));
+    await go(P, 'index.php?page=tasks');
+    await P.selectOption('select[name=priority]', 'immediate'); await P.waitForURL(/priority=immediate/, { timeout: 4000 });
+  });
+  await test('Y04', 'Work Log: staff + date filters, totals equal the database for the same filter', async () => {
+    const who = one(`SELECT LOWER(staff_key) FROM work_log WHERE staff_key IS NOT NULL GROUP BY LOWER(staff_key) ORDER BY COUNT(*) DESC LIMIT 1`);
+    const from = one(`SELECT DATE_SUB(MAX(COALESCE(work_date,DATE(started_at))), INTERVAL 400 DAY) FROM work_log`), to = one(`SELECT MAX(COALESCE(work_date,DATE(started_at))) FROM work_log`);
+    await go(P, `index.php?page=work&staff=${encodeURIComponent(who)}&from=${from}&to=${to}`);
+    const db = sql(`SELECT COUNT(*), COALESCE(SUM(duration_seconds),0), COALESCE(SUM(billable_seconds),0) FROM work_log WHERE LOWER(COALESCE(staff_key,''))='${esc(who)}' AND COALESCE(work_date,DATE(started_at)) BETWEEN '${from}' AND '${to}'`)[0];
+    const fmt = s => Math.floor(s / 3600) + 'h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + 'm';
+    const t = await P.locator('[data-testid=work-totals]').innerText();
+    assert(t.includes(Number(db[0]).toLocaleString('en-NZ')) && t.includes(fmt(+db[1]) + ' worked') && t.includes(fmt(+db[2]) + ' billable'), `totals "${t}" vs ${db}`);
+    note(`${who}, ${from}..${to}: ${db[0]} entries, ${fmt(+db[1])}`);
+  });
+  await test('Y05', 'CSV export: tasks, work and clients match the filtered lists; UTF-8 BOM; formula-looking cells neutralised', async () => {
+    const who = S.staffTop;
+    const t = await csv(`export.php?type=tasks&status=all&assigned=${encodeURIComponent(who)}`);
+    assert(t.status === 200 && /text\/csv/.test(t.type) && t.bom, 'tasks headers');
+    const dbn = num(`SELECT COUNT(*) FROM tasks WHERE CONCAT(', ', LOWER(COALESCE(assigned_to,'')), ',') LIKE '%, ${esc(who)},%'`);
+    assert(t.rows[0][2] === 'Task title' && t.rows.length - 1 === dbn, `tasks rows ${t.rows.length - 1} vs ${dbn}`);
+    const w = await csv('export.php?type=work&filter=new');
+    assert(w.rows.length - 1 === num(`SELECT COUNT(*) FROM work_log WHERE source_system IS NULL OR source_system<>'fabrik'`), 'work rows');
+    sql(`INSERT INTO clients (source_system,source_id,name,status) VALUES ('app','y05-${Date.now()}','=HYPERLINK("http://evil")','active')`);
+    const c = await csv('export.php?type=clients&show=all&q=hyperlink');
+    const cell = (c.rows.find(r => r[2] && r[2].includes('HYPERLINK')) || [])[2];
+    assert(cell && cell.startsWith("'="), 'formula not neutralised: ' + cell);
+    const signedOut = await api.get('export.php?type=tasks'); assert(signedOut.status() === 302, 'export open when signed out');
+  });
+  await test('Y06', 'Clients: contact-role filter lists exactly the clients with an active contact in that role', async () => {
+    await go(P, 'index.php?page=clients&show=all&role=' + encodeURIComponent('domain owner'));
+    const ids = await P.$$eval('.client-list a.record', a => a.map(x => +new URL(x.href).searchParams.get('id')));
+    const db = sql(`SELECT DISTINCT client_id FROM contacts WHERE client_id IS NOT NULL AND COALESCE(status,'')<>'archive' AND CONCAT(', ', LOWER(COALESCE(contact_type,'')), ',') LIKE '%, domain owner,%'`).map(r => +r[0]);
+    assert(ids.length === Math.min(db.length, 400) && ids.every(i => db.includes(i)), `role: ${ids.length} vs ${db.length}`);
+  });
+  await test('Y07', 'Quick Enquiry accepts the Fabrik priority "Immediate"', async () => {
+    await go(P, 'add-enquiry.php?client_id=' + S.client.id); await P.fill('#title', 'Test Y07 immediate'); await P.selectOption('#priority', 'immediate'); await save(P);
+    assert(one(`SELECT priority FROM enquiries WHERE title='Test Y07 immediate'`) === 'immediate', 'not saved');
+  });
+  await test('Y08', 'Task page shows time-sheet totals equal to the database', async () => {
+    const tid = +one(`SELECT task_id FROM work_log WHERE task_id IS NOT NULL GROUP BY task_id ORDER BY COUNT(*) DESC LIMIT 1`);
+    await go(P, 'index.php?page=task&id=' + tid);
+    const db = sql(`SELECT COALESCE(SUM(duration_seconds),0), COALESCE(SUM(billable_seconds),0) FROM work_log WHERE task_id=${tid}`)[0];
+    const fmt = s => Math.floor(s / 3600) + 'h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + 'm';
+    const t = await P.locator('[data-testid=task-totals]').innerText();
+    assert(t.includes(fmt(+db[0]) + ' worked') && t.includes(fmt(+db[1]) + ' billable'), `"${t}" vs ${db}`);
   });
 
   /* ================= Today correctness ================= */

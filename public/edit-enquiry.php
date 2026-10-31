@@ -20,7 +20,7 @@ try {
         $followup=m7date($_POST['next_action_due']??'');
         $clientId=cm_valid_client($pdo, trim((string)($_POST['client_id']??'')), true);
         if ($title==='' || mb_strlen($title)>255) throw new InvalidArgumentException('Title is required (maximum 255 characters).');
-        if (!in_array($priority,['low','normal','high','urgent'],true)) throw new InvalidArgumentException('Invalid priority.');
+        if (!in_array($priority,['immediate','high','normal','low','urgent'],true)) throw new InvalidArgumentException('Invalid priority.');
         if (mb_strlen($waiting)>80) throw new InvalidArgumentException('Waiting for is too long.');
         $pdo->beginTransaction();
         $s=$pdo->prepare('SELECT * FROM enquiries WHERE id=? FOR UPDATE');$s->execute([$id]);$old=$s->fetch();
@@ -59,7 +59,7 @@ cm_page_start('Edit enquiry #' . $id, 'enquiries', ['back' => ['convert-enquiry.
 <div class="field"><label for="client">Client</label><?php cm_client_picker(cm_client_options($pdo), (string)($e['client_id'] ?? ''), true); ?></div>
 <div class="field"><label for="title">Title</label><input id="title" name="title" maxlength="255" required value="<?=m7h($e['title'])?>"></div>
 <div class="field"><label for="details">Details</label><textarea id="details" name="details"><?=m7h($e['details'])?></textarea></div>
-<div class="pair"><div class="field"><label for="priority">Priority</label><select name="priority" id="priority"><?php foreach (['low', 'normal', 'high', 'urgent'] as $v): ?><option value="<?=m7h($v)?>"<?=$e['priority'] === $v ? ' selected' : ''?>><?=ucfirst($v)?></option><?php endforeach; ?></select></div>
+<div class="pair"><div class="field"><label for="priority">Priority</label><select name="priority" id="priority"><?php foreach (array_merge(array_keys(CM_PRIORITIES), in_array($e['priority'], array_keys(CM_PRIORITIES), true) ? [] : [(string)$e['priority']]) as $v): ?><option value="<?=m7h($v)?>"<?=$e['priority'] === $v ? ' selected' : ''?>><?=ucfirst($v)?></option><?php endforeach; ?></select></div>
 <div class="field"><label for="required">Required by</label><input id="required" type="date" name="required_by" value="<?=m7h($e['required_by'])?>"></div></div>
 <details<?=($e['next_action'] || $e['next_action_due'] || $e['waiting_for']) ? ' open' : ''?>><summary>Next action and follow-up</summary><div class="field"><label for="next">Next action</label><textarea id="next" name="next_action"><?=m7h($e['next_action'])?></textarea></div><div class="pair"><div class="field"><label for="due">Follow-up date</label><input id="due" type="date" name="next_action_due" value="<?=m7h($e['next_action_due'])?>"></div><div class="field"><label for="waiting">Waiting for</label><input id="waiting" name="waiting_for" maxlength="80" value="<?=m7h($e['waiting_for'])?>"></div></div></details>
 <button type="submit" class="save">Save enquiry</button></form>

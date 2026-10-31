@@ -38,7 +38,7 @@ function listexpr(string $e): string
 function backfillSql(array $m): array
 {
     $out = [];
-    foreach ($m['backfill'] as $table => $map) {
+    foreach ($m['backfill'] ?? [] as $table => $map) {
         $sets = []; $wheres = [];
         foreach ($map as $col => $field) {
             $e = jexpr($field);
@@ -47,6 +47,8 @@ function backfillSql(array $m): array
         }
         $out[] = "UPDATE `$table` SET " . implode(",\n  ", $sets) . "\nWHERE legacy_record IS NOT NULL";
     }
+    // Backfills that need a lookup or a type conversion. {J:field} expands to the JSON value expression.
+    foreach ($m['backfill_sql'] ?? [] as $sql) $out[] = preg_replace_callback('/\{J(?::([a-z]+))?:([A-Za-z0-9_]+)\}/', fn($x) => $x[1] !== '' ? str_replace('legacy_record', $x[1] . '.legacy_record', jexpr($x[2])) : jexpr($x[2]), $sql);
     return $out;
 }
 function addColumnsSql(string $table, array $cols): string
@@ -98,13 +100,21 @@ function ledger(PDO $pdo): array
 function verify(PDO $pdo, array $m): array
 {
     $problems = [];
-    foreach ($m['backfill'] as $table => $map) {
+    foreach ($m['verify_sql'] ?? [] as $label => $sql) {
+        $sql = preg_replace_callback('/\{J(?::([a-z]+))?:([A-Za-z0-9_]+)\}/', fn($x) => $x[1] !== '' ? str_replace('legacy_record', $x[1] . '.legacy_record', jexpr($x[2])) : jexpr($x[2]), $sql);
+        $bad = (int)$pdo->query($sql)->fetchColumn();
+        if ($bad) $problems[] = "$label: $bad rows";
+    }
+    foreach ($m['backfill'] ?? [] as $table => $map) {
         foreach ($map as $col => $field) {
-            $src = (int)$pdo->query("SELECT COUNT(*) FROM `$table` WHERE legacy_record IS NOT NULL AND " . jexpr($field) . " IS NOT NULL")->fetchColumn();
+            $isList = in_array("$table.$col", $m['list_fields'] ?? [], true);
+            $srcExpr = $isList ? listexpr(jexpr($field)) : jexpr($field);   // [""] counts as empty, as in the backfill
+            $src = (int)$pdo->query("SELECT COUNT(*) FROM `$table` WHERE legacy_record IS NOT NULL AND ($srcExpr) IS NOT NULL")->fetchColumn();
             $dst = (int)$pdo->query("SELECT COUNT(*) FROM `$table` WHERE legacy_record IS NOT NULL AND `$col` IS NOT NULL")->fetchColumn();
             if ($dst < $src) $problems[] = "$table.$col: $dst filled, $src expected";
             if (!in_array("$table.$col", $m['list_fields'] ?? [], true)) {
-                $bad = (int)$pdo->query("SELECT COUNT(*) FROM `$table` WHERE legacy_record IS NOT NULL AND updated_at IS NULL AND `$col` IS NOT NULL AND BINARY `$col` <> BINARY " . jexpr($field))->fetchColumn();
+                $unedited = in_array('updated_at', existingColumns($pdo, $table), true) ? 'updated_at IS NULL AND ' : '';
+                $bad = (int)$pdo->query("SELECT COUNT(*) FROM `$table` WHERE legacy_record IS NOT NULL AND $unedited`$col` IS NOT NULL AND BINARY `$col` <> BINARY " . jexpr($field))->fetchColumn();
                 if ($bad) $problems[] = "$table.$col: $bad values differ from the imported record";
             }
         }

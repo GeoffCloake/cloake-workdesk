@@ -37,9 +37,9 @@ foreach ($biz as $i => $name) {
     $out[] = "INSERT INTO clients (id,source_system,source_id,name,status,xero_contact_id,legacy_record) VALUES ($id,'fabrik'," . $q(100 + $id) . "," . $q($name) . "," . $q($status) . "," . $q($rec['xero_contact'] ?: null) . "," . $j($rec) . ");";
 }
 // ---- contacts ----
-$cid = 0;
+$cid = 0; $firstContact = [];
 foreach ($clientIds as $c) {
-    $n = 1 + ($c % 3);
+    $n = 1 + ($c % 3); $firstContact[$c] = $cid + 1;
     for ($k = 0; $k < $n; $k++) {
         $cid++;
         $fn = $first[$cid % 20]; $ln = $last[($cid * 7 + intdiv($cid, 20)) % 20];
@@ -70,7 +70,11 @@ for ($i = 1; $i <= 240; $i++) {
     if ($i === 52) { $status = 'pending'; $req = $d(-200); }      // stale backlog
     $completed = $status === 'completed' ? $req . ' 16:00:00' : null;
     $title = $titles[$i % count($titles)] . ' ' . $i;
-    $rec = ['id' => (string)(3000 + $i), 'client_id' => $c ? (string)(100 + $c) : '9999', 'task_title' => $title, 'status' => $status, 'required_date' => $req . ' 00:00:00', 'pricing' => ['hourly', 'set', 'web_service'][$i % 3], 'action_for' => json_encode(['geoff']), 'notes' => '', 'billing_advised' => $i % 17 === 0 ? '1' : '0'];
+    $cats = [['Website design and management', 'Website edits'], ['Graphic design', 'Advert'], ['Graphic design', 'Flyer-poster-leaflet'], ['Photography & video', 'Commission photography']];
+    $cat = $cats[$i % 4];
+    $who = [['geoff'], ['roselyn'], ['roselyn', 'geoff'], ['lydia']][$i % 4];
+    $rec = ['id' => (string)(3000 + $i), 'client_id' => $c ? (string)(100 + $c) : '9999', 'task_title' => $title, 'status' => $status, 'required_date' => $req . ' 00:00:00', 'pricing' => ['hourly', 'set', 'web_service'][$i % 3], 'action_for' => json_encode($who), 'notes' => '', 'billing_advised' => $i % 17 === 0 ? '1' : '0',
+        'task_category' => $cat[0], 'task_type' => $cat[1], 'queue' => (string)($i % 5 === 0 ? 200 : 0), 'contact_id' => $c ? (string)(500 + $firstContact[$c]) : '', 'domains' => $i % 7 === 0 ? 'example-' . $i . '.co.nz' : ''];
     $out[] = "INSERT INTO tasks (id,client_id,source_system,source_id,title,instructions,required_by,received_at,completed_at,priority,status,pricing,billing_advised,invoice_number,legacy_record) VALUES ($taskId," . ($c ?? 'NULL') . ",'fabrik'," . $q(3000 + $i) . "," . $q($title) . "," . $q("Fictional instructions for task $i.\nSecond line.") . "," . $q($req . ' 00:00:00') . "," . $q($d(-(2010 - $i * 8)) . ' 09:00:00') . "," . $q($completed) . "," . $q(['immediate', 'normal', 'high'][$i % 3]) . "," . $q($status) . "," . $q($rec['pricing']) . "," . ($i % 17 === 0 ? 1 : 0) . "," . $q($i % 23 === 0 ? 'INV-FAKE-' . $i : null) . "," . $j($rec) . ");";
     $taskRows[$taskId] = $c;
 }
@@ -84,6 +88,10 @@ for ($i = 1; $i <= 480; $i++) {
     $rec = ['id' => (string)(8000 + $i), 'task_id' => $t ? (string)(3000 + $t) : '', 'client_id' => $c ? (string)(100 + $c) : '', 'details' => 'Fictional work item ' . $i, 'time_worked' => $secs ? gmdate('H:i:s', $secs) : '', 'action_by' => $staff[$i % 3]];
     $out[] = "INSERT INTO work_log (client_id,task_id,source_system,source_id,staff_key,details,started_at,ended_at,work_date,duration_seconds,billable_seconds,billability,legacy_record) VALUES (" . ($c ?? 'NULL') . "," . ($t ?? 'NULL') . ",'fabrik'," . $q(8000 + $i) . "," . $q($staff[$i % 3]) . "," . $q('Fictional work item ' . $i) . "," . $q($date . ' 09:00:00') . "," . $q($date . ' 10:00:00') . "," . $q($date) . ",$secs,$secs,'review'," . $j($rec) . ");";
 }
+// ---- category -> type table (as the archived Fabrik classification) ----
+$cl = 0;
+foreach (['Website design and management' => ['Website edits', 'New website', 'Upgrade website'], 'Graphic design' => ['Advert', 'Flyer-poster-leaflet', 'Logo'], 'Photography & video' => ['Commission photography', 'Video'], 'Social media' => ['']] as $cat => $types)
+    foreach ($types as $ty) { $cl++; $out[] = "INSERT INTO legacy_classification (source_id,source_table,source_record,row_sha256) VALUES ($cl,'aa_cc_acc_codes'," . $j(['id' => (string)$cl, 'task_category' => $cat, 'task_type' => $ty, 'date_time' => '0000-00-00 00:00:00']) . ",'" . hash('sha256', $cat . $ty) . "');"; }
 // ---- app-created rows, mirroring the user's staging tests ----
 $out[] = "ALTER TABLE tasks AUTO_INCREMENT=2048;";
 $out[] = "ALTER TABLE work_log AUTO_INCREMENT=4096;";

@@ -71,8 +71,11 @@ function cm_list_text(?string $v): string
 }
 const CM_CONTACT_TYPES = ['accounts' => 'Accounts', 'project liaison' => 'Project liaison', 'domain owner' => 'Domain owner', 'domain admin' => 'Domain admin', 'domain tech' => 'Domain tech'];
 const CM_CONTACT_METHODS = ['' => '—', 'email' => 'Email', 'phone' => 'Phone', 'mobile' => 'Mobile', 'post' => 'Post'];
-const CM_TASK_STATUSES = ['open' => 'Open', 'in_progress' => 'In progress', 'waiting' => 'Waiting', 'completed' => 'Completed', 'cancelled' => 'Cancelled'];
-const CM_PRIORITIES = ['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'urgent' => 'Urgent'];
+// Status and priority words follow the Fabrik task manager (stored lower-case, as imported).
+const CM_TASK_STATUSES = ['open' => 'Open (new)', 'pending' => 'Pending', 'planned' => 'Planned', 'in progress' => 'In progress', 'ongoing' => 'Ongoing', 'waiting' => 'Waiting', 'on hold' => 'On hold', 'completed' => 'Completed', 'cancelled' => 'Cancelled'];
+const CM_PRIORITIES = ['immediate' => 'Immediate', 'high' => 'High', 'normal' => 'Normal', 'low' => 'Low'];
+/** Older values still accepted when a record already has them (e.g. 'urgent' on early enquiries, 'in_progress'). */
+const CM_LEGACY_PRIORITIES = ['urgent'];
 
 /** Standard error handling for edit pages: returns the message to show. */
 function cm_edit_error(Throwable $e, PDO $pdo, string $logLabel): string

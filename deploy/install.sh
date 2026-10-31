@@ -116,7 +116,10 @@ if [ "$MIG_RC" = 10 ]; then
     set +e; CM_CONFIG="$CONFIG" "$PHP" "$PKG/deploy/migrate.php" apply 2>&1 | tee -a "$LOG" | sed 's/^/  /'; MIG_RC=${PIPESTATUS[0]}; set -e
     case "$MIG_RC" in
       0) say "Database migration: OK" ;;
-      3) die "the app's database user may not change table structure. In phpMyAdmin, select the database, open SQL, paste the contents of $PKG/deploy/migrations/001_editable_details.apply.sql and run it once. Then rerun this installer." ;;
+      3) PENDING_SQL="$(printf '%s\n' "$MIG_OUT" | grep -oE '[0-9]{3}_[a-z_]+ — (PENDING|columns present, not recorded)' | cut -d' ' -f1 | sed "s|^|    $PKG/deploy/migrations/|; s|\$|.apply.sql|")"
+         say "The app's database user may not change table structure. In phpMyAdmin: select the database, open the SQL tab, and run the contents of each file below ONCE, in this order:"
+         printf '%s\n' "$PENDING_SQL" | tee -a "$LOG"
+         die "then rerun this installer." ;;
       *) die "database migration failed (see $LOG). The live app is unchanged and still works. Send me the log." ;;
     esac
   fi

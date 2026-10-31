@@ -7,6 +7,7 @@ declare(strict_types=1);
  *   lookup.php?clients=1          compact client + contact index for instant client-side filtering
  *   lookup.php?tasks_for=<id>     open tasks first, then recent closed tasks, for one client
  *   lookup.php?task_q=<text>      task search by title / client / original ID
+ *   lookup.php?contacts_for=<id>  contacts of one client (task form)
  */
 require __DIR__ . '/inc/bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
@@ -36,6 +37,13 @@ try {
                        'e' => $clean($c['email']), 'p' => $clean($c['phone']), 'c' => $byClient[(int)$c['id']] ?? []];
         }
         out(['build' => CLOAKE_BUILD, 'clients' => $rows]);
+    }
+
+    if (isset($_GET['contacts_for'])) {
+        $cid = filter_var($_GET['contacts_for'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+        if (!$cid) { http_response_code(400); out(['error' => 'bad_client']); }
+        $rows = allRows($pdo, "SELECT id, display_name, status FROM contacts WHERE client_id=? ORDER BY (COALESCE(status,'')='archive'), display_name", [$cid]);
+        out(['contacts' => array_map(fn($r) => ['id' => (int)$r['id'], 'name' => (string)$r['display_name'], 'archived' => ($r['status'] ?? '') === 'archive'], $rows)]);
     }
 
     $closed = cm_closed_status_sql('t.status');

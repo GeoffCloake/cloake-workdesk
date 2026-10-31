@@ -339,6 +339,32 @@
     } // end timer/mode section (Log work page only)
   }
 
+  /* ---------------- task form: contacts follow client, types follow category ---------------- */
+  var tfm = $('[data-task-form]');
+  if (tfm) {
+    var cSel = $('[data-client-select]', tfm), kSel = $('[data-contact-select]', tfm), kHelp = $('[data-contact-help]', tfm);
+    if (cSel && kSel) cSel.addEventListener('change', function () {
+      var cid = cSel.value; kSel.replaceChildren(el('option', { value: '', text: '—' }));
+      if (!cid) { if (kHelp) kHelp.textContent = 'Choose a client to list its contacts.'; return; }
+      fetch('lookup.php?contacts_for=' + encodeURIComponent(cid), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+        (d.contacts || []).forEach(function (k) { kSel.appendChild(el('option', { value: String(k.id), text: k.name + (k.archived ? ' (archived)' : '') })); });
+        if (kHelp) kHelp.textContent = (d.contacts || []).length ? '' : 'This client has no contacts yet.';
+      }).catch(function () { });
+    });
+    var catSel = $('[data-category-select]', tfm), typSel = $('[data-type-select]', tfm);
+    if (catSel && typSel) {
+      var map = {}; try { map = JSON.parse(typSel.getAttribute('data-types') || '{}'); } catch (e) { }
+      catSel.addEventListener('change', function () {
+        var keep = typSel.value; typSel.replaceChildren(el('option', { value: '', text: '—' }));
+        (map[catSel.value] || []).forEach(function (t) { typSel.appendChild(el('option', { value: t, text: t })); });
+        if ((map[catSel.value] || []).indexOf(keep) >= 0) typSel.value = keep;
+      });
+    }
+  }
+
+  /* ---------------- list filters apply as soon as they change ---------------- */
+  $$('[data-autosubmit]').forEach(function (c) { c.addEventListener('change', function () { if (c.form) c.form.submit(); }); });
+
   /* ---------------- forms: prevent accidental double submit ---------------- */
   $$('form[method="post"]').forEach(function (f) {
     if (f.hasAttribute('data-signout')) return;

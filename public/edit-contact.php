@@ -11,10 +11,12 @@ require_once __DIR__ . '/inc/forms.php';
 cm_require_login();
 $pdo = cm_pdo();
 $id = m7id();
-$FIELDS = ['client_id', 'first_name', 'middle_name', 'last_name', 'position', 'contact_type', 'email', 'phone', 'mobile', 'contact_method', 'status', 'notes'];
-$LIMITS = ['first_name' => 100, 'middle_name' => 100, 'last_name' => 100, 'position' => 150, 'contact_type' => 255, 'email' => 255, 'phone' => 64, 'mobile' => 64, 'contact_method' => 40, 'status' => 30, 'notes' => 20000, 'client_id' => 20];
+$FIELDS = ['client_id', 'title', 'first_name', 'middle_name', 'last_name', 'position', 'contact_type', 'email', 'phone', 'mobile', 'contact_method', 'status', 'notes'];
+$LIMITS = ['title' => 30, 'first_name' => 100, 'middle_name' => 100, 'last_name' => 100, 'position' => 150, 'contact_type' => 255, 'email' => 255, 'phone' => 64, 'mobile' => 64, 'contact_method' => 40, 'status' => 30, 'notes' => 20000, 'client_id' => 20];
 $error = '';
 $preClient = filter_var($_GET['client_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+$has002 = (bool)oneRow($pdo, "SELECT 1 x FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='contacts' AND COLUMN_NAME='title'");
+if (!$has002) $FIELDS = array_values(array_diff($FIELDS, ['title']));
 $k = $id ? oneRow($pdo, 'SELECT * FROM contacts WHERE id=?', [$id]) : array_merge(array_fill_keys($FIELDS, null), ['client_id' => $preClient, 'status' => 'active']);
 if ($id && !$k) { http_response_code(404); exit('Contact not found.'); }
 
@@ -80,7 +82,8 @@ cm_page_start($title, 'clients', ['back' => $k['client_id'] ? [route('client', [
 <?php if ($id && !empty($k['legacy_record'])): ?><p class="small muted">Imported contact (original ID <?=h($k['source_id'])?>). Original imported values are kept unchanged.<?php if (!$k['client_id']): ?> <strong>This contact had no client in the old system — choose one below.</strong><?php endif; ?></p><?php endif; ?>
 <form method="post" class="form"><input type="hidden" name="id" value="<?=(int)$id?>"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="ver" value="<?=h($ver)?>">
 <div class="field"><label for="client">Client</label><?php cm_client_picker($clients, (string)($k['client_id'] ?? ''), true); ?></div>
-<div class="pair"><?php $input('first_name', 'First name'); $input('last_name', 'Last name'); ?></div>
+<div class="pair"><?php if ($has002) $input('title', 'Title (Mr, Ms, Dr…)'); $input('first_name', 'First name'); ?></div>
+<div class="pair"><?php $input('last_name', 'Last name'); ?></div>
 <div class="pair"><?php $input('middle_name', 'Middle name'); $input('position', 'Position / role'); ?></div>
 <div class="pair"><?php $input('mobile', 'Mobile', ['type' => 'tel', 'im' => 'tel']); $input('phone', 'Phone', ['type' => 'tel', 'im' => 'tel']); ?></div>
 <?php $input('email', 'Email', ['type' => 'email']); ?>

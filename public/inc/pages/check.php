@@ -20,7 +20,10 @@ $add('tasks.client_id allows unassigned (M3D)', ($cols['tasks.client_id'] ?? '')
 $mig001 = ['clients.email', 'clients.business_name', 'clients.physical_city_town', 'clients.notes', 'clients.updated_at', 'contacts.mobile', 'contacts.first_name', 'contacts.status', 'contacts.updated_at'];
 $missing001 = array_values(array_filter($mig001, fn($c) => !isset($cols[$c])));
 $ledger = in_array('schema_migrations', $tables, true) ? array_column(allRows($pdo, 'SELECT id FROM schema_migrations'), 'id') : [];
+$mig002 = ['tasks.contact_id', 'tasks.assigned_to', 'tasks.queue', 'tasks.task_category', 'tasks.task_type', 'tasks.domains', 'clients.postal_region', 'clients.credit_approved', 'clients.comments', 'contacts.title'];
+$missing002 = array_values(array_filter($mig002, fn($c) => !isset($cols[$c])));
 $add('Migration 001 — editable client & contact details', !$missing001 && in_array('001_editable_details', $ledger, true), $missing001 ? 'missing: ' . implode(', ', $missing001) : (in_array('001_editable_details', $ledger, true) ? 'applied' : 'columns present but not recorded'));
+$add('Migration 002 — task workload fields', !$missing002 && in_array('002_task_workload_fields', $ledger ?? [], true), $missing002 ? 'missing: ' . implode(', ', $missing002) : 'applied');
 $uq = oneRow($pdo, "SELECT COUNT(*) n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tasks' AND INDEX_NAME='uq_task_source'");
 $add('Duplicate-conversion guard (tasks unique source key)', (int)$uq['n'] > 0);
 $counts = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM clients) clients, (SELECT COUNT(*) FROM contacts) contacts,

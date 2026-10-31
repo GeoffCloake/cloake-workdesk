@@ -17,7 +17,7 @@ $migrated = array_key_exists('email', $c);                              // migra
 $closed = cm_closed_status_sql('status');
 
 $contacts = allRows($pdo, 'SELECT * FROM contacts WHERE client_id=? ORDER BY display_name LIMIT 200', [$id]);
-$tasksOpen = allRows($pdo, "SELECT id,title,status,required_by,pricing,source_system FROM tasks WHERE client_id=? AND NOT ($closed) AND completed_at IS NULL ORDER BY (required_by IS NULL), required_by DESC, id DESC LIMIT 60", [$id]);
+$tasksOpen = allRows($pdo, "SELECT * FROM tasks WHERE client_id=? AND NOT ($closed) AND completed_at IS NULL ORDER BY (required_by IS NULL), required_by DESC, id DESC LIMIT 60", [$id]);
 $tasksClosed = allRows($pdo, "SELECT id,title,status,required_by,completed_at,pricing FROM tasks WHERE client_id=? AND (($closed) OR completed_at IS NOT NULL) ORDER BY COALESCE(completed_at,required_by,received_at) DESC, id DESC LIMIT 60", [$id]);
 $closedCount = oneRow($pdo, "SELECT COUNT(*) n FROM tasks WHERE client_id=? AND (($closed) OR completed_at IS NOT NULL)", [$id]);
 $work = allRows($pdo, "SELECT w.id,w.details,w.staff_key,w.work_date,w.started_at,w.duration_seconds,w.billable_seconds,w.billability,w.source_system,w.task_id,t.title task_title
@@ -56,7 +56,7 @@ $timeline = array_slice($timeline, 0, 40);
 
 $addr = fn(array $keys) => implode(', ', array_filter(array_map($rv, $keys), 'strlen'));
 $physical = $addr(['physical_address_1', 'physical_address_2', 'physical_city_town', 'physical_country']);
-$postal = $addr(['postal_address_1', 'postal_address_2', 'postal_address_3', 'postal_city_town', 'postal_code', 'postal_country']);
+$postal = $addr(['postal_address_1', 'postal_address_2', 'postal_address_3', 'postal_city_town', 'postal_region', 'postal_code', 'postal_country']);
 $savedFlag = $_GET['saved'] ?? null;
 ?>
 <?php if ($savedFlag === '1'): ?><div class="success" role="status">Saved.</div><?php elseif ($savedFlag === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
@@ -104,7 +104,7 @@ $savedFlag = $_GET['saved'] ?? null;
   <div class="section-heading"><h2 id="ot">Open tasks</h2><a href="edit-task.php?client_id=<?=(int)$id?>">＋ Task</a></div>
   <?php if (!$tasksOpen): ?><p class="emptyline">No open tasks for this client.</p><?php else: ?>
   <div class="stack compact-list"><?php foreach ($tasksOpen as $t): $late = $t['required_by'] && substr((string)$t['required_by'], 0, 10) < $today; ?>
-    <div class="record"><a class="record-main" href="<?=h(route('task', ['id' => $t['id']]))?>"><strong><?=h($t['title'])?></strong><small><?=h(cm_status_label($t['status']))?><?=$t['pricing'] ? ' · ' . h(cm_status_label($t['pricing'])) : ''?><?=$t['required_by'] ? ' · due ' . h(niceDate($t['required_by'])) : ''?></small></a>
+    <div class="record"><a class="record-main" href="<?=h(route('task', ['id' => $t['id']]))?>"><strong><?=h($t['title'])?></strong><small><?=!empty($t['assigned_to']) ? h(ucwords((string)$t['assigned_to'])) . ' · ' : ''?><?=h(cm_status_label($t['status']))?><?=$t['pricing'] ? ' · ' . h(cm_status_label($t['pricing'])) : ''?><?=$t['required_by'] ? ' · due ' . h(niceDate($t['required_by'])) : ''?></small></a>
       <a class="inline-action<?=$late ? ' late' : ''?>" href="add-work.php?task_id=<?=(int)$t['id']?>">Log work</a></div>
   <?php endforeach; ?></div><?php endif; ?>
   <?php if ((int)$closedCount['n'] > 0): ?><details><summary>Completed &amp; cancelled tasks (<?=(int)$closedCount['n']?>)</summary><div class="stack compact-list">
@@ -130,7 +130,7 @@ $savedFlag = $_GET['saved'] ?? null;
 </section>
 
 <details><summary>Client details</summary><dl>
-  <?php foreach (['Business name' => $rv('business_name'), 'Email' => $rv('email'), 'Phone' => $rv('phone'), 'Physical address' => $physical, 'Postal address' => $postal, 'Preferred contact' => $rv('contact_method'), 'Xero contact reference' => (string)$c['xero_contact_id'], 'Notes' => $rv('notes')] as $label => $val): ?>
+  <?php foreach (['Business name' => $rv('business_name'), 'Email' => $rv('email'), 'Phone' => $rv('phone'), 'Physical address' => $physical, 'Postal address' => $postal, 'Preferred contact' => $rv('contact_method'), 'Xero contact reference' => (string)$c['xero_contact_id'], 'Credit approved' => ucfirst($rv('credit_approved')), 'Notes' => $rv('notes'), 'Comments' => $rv('comments')] as $label => $val): ?>
   <dt><?=h($label)?></dt><dd><?=h($val !== '' ? $val : '—')?></dd>
   <?php endforeach; ?>
 </dl><?php if ($migrated): ?><p><a class="inline-action" href="edit-client.php?id=<?=(int)$id?>">Edit client details</a></p><?php endif; ?></details>
