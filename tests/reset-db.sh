@@ -21,6 +21,9 @@ case "$MODE" in
     ;;
   *) echo "usage: $0 fixture|replica"; exit 2;;
 esac
+# Apply migrations with the runner (account-owner privileges, as on the server).
+MCFG="$(mktemp)"; php -r 'file_put_contents($argv[1], "<?php return ".var_export(["password_hash"=>"x","db_host"=>"localhost","db_name"=>$argv[2],"db_user"=>"root","db_password"=>"x"],true).";");' "$MCFG" "$DB"
+CM_CONFIG="$MCFG" php ../deploy/migrate.php apply | sed 's/^/  /'; rm -f "$MCFG"
 mysql -e "CREATE USER IF NOT EXISTS 'cloakecrea_manager'@'localhost' IDENTIFIED BY 'localtest-only'; GRANT SELECT,INSERT,UPDATE,DELETE ON \`$DB\`.* TO 'cloakecrea_manager'@'localhost'; FLUSH PRIVILEGES;"
 php -r '$c=require $argv[1]; $c["db_name"]=$argv[2]; file_put_contents($argv[1], "<?php\nreturn ".var_export($c,true).";\n");' "$CFG" "$DB"
 echo "Reset $MODE -> $DB: $(mysql -N "$DB" -e "SELECT CONCAT((SELECT COUNT(*) FROM clients),' clients, ',(SELECT COUNT(*) FROM contacts),' contacts, ',(SELECT COUNT(*) FROM tasks),' tasks, ',(SELECT COUNT(*) FROM work_log),' work, ',(SELECT COUNT(*) FROM enquiries),' enquiries')")"
