@@ -22,11 +22,11 @@ $openNew = allRows($pdo, "SELECT t.id,t.title,t.status,t.client_id,t.received_at
     ORDER BY t.id DESC LIMIT 8");
 // 3. Enquiry follow-ups due within 7 days, and enquiries not yet progressed.
 $follow = allRows($pdo, "SELECT e.id,e.title,e.next_action,e.next_action_due,e.waiting_for,e.client_id,c.name client_name FROM enquiries e LEFT JOIN clients c ON c.id=e.client_id
-    WHERE e.next_action_due IS NOT NULL AND e.next_action_due<=? AND e.status NOT IN ('task_created','closed','cancelled')
+    WHERE e.next_action_due IS NOT NULL AND e.next_action_due<=? AND e.status NOT IN ('task_created','closed','cancelled','declined','withdrawn','duplicate')
     ORDER BY e.next_action_due ASC, e.id DESC LIMIT 6", [$soon]);
 $followIds = array_map(fn($r) => (int)$r['id'], $follow);
 $pendingEnq = allRows($pdo, "SELECT e.id,e.title,e.created_at,e.required_by,e.client_id,c.name client_name FROM enquiries e LEFT JOIN clients c ON c.id=e.client_id
-    WHERE e.status='enquiry' AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.enquiry_id=e.id) ORDER BY e.id DESC LIMIT 6");
+    WHERE e.status IN ('enquiry','accepted') AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.enquiry_id=e.id) ORDER BY e.id DESC LIMIT 6");
 // 4. Older open backlog (count only).
 $stale = oneRow($pdo, "SELECT COUNT(*) n FROM tasks t WHERE t.required_by IS NOT NULL AND DATE(t.required_by)<? AND NOT ($closed) AND t.completed_at IS NULL", [$staleFrom]);
 // 5. New Work Log entries that still need a decision (imported history is excluded: it was all imported as 'review').

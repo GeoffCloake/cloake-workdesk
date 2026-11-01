@@ -931,6 +931,13 @@ function protectedChecksums() {
     assert(!bad.length, bad.join('; '));
   });
 
+  await test('N13', 'Today: a withdrawn enquiry with a follow-up due is not listed; an accepted enquiry without a task is', async () => {
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,next_action_due,received_at,created_at) VALUES (${S.anyClient},'Test N13 withdrawn follow-up','normal','withdrawn','${todayNZ}',NOW(),NOW()),(${S.anyClient},'Test N13 accepted','normal','accepted',NULL,NOW(),NOW())`);
+    await go(P, 'index.php?page=today');
+    const txt = (await P.$$eval('[data-testid=attention-queue] li', ls => ls.map(l => l.textContent))).join(' | ');
+    assert(!txt.includes('Test N13 withdrawn follow-up'), 'withdrawn enquiry listed');
+    assert(txt.includes('Test N13 accepted') || /more in/.test(await P.locator('main').innerText()), 'accepted enquiry missing: ' + txt.slice(0, 300));
+  });
   /* ================= Today correctness ================= */
   await test('T01', 'Today: no record-count tiles; queue items are real open/due records; backlog count matches database', async () => {
     await go(P, 'index.php?page=today');
