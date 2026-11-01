@@ -92,6 +92,6 @@ cm_page_start($title, 'clients', ['back' => $k['client_id'] ? [route('client', [
 <div class="pair"><div class="field"><label for="contact_method">Preferred contact</label><select id="contact_method" name="contact_method"><?php foreach (CM_CONTACT_METHODS as $m => $l): ?><option value="<?=h($m)?>"<?=(string)($k['contact_method'] ?? '') === $m ? ' selected' : ''?>><?=h($l)?></option><?php endforeach; ?><?php if (!array_key_exists((string)($k['contact_method'] ?? ''), CM_CONTACT_METHODS)): ?><option value="<?=h($k['contact_method'])?>" selected><?=h($k['contact_method'])?></option><?php endif; ?></select></div>
 <div class="field"><label for="status">Status</label><select id="status" name="status"><option value="active"<?=($k['status'] ?? 'active') !== 'archive' ? ' selected' : ''?>>Active</option><option value="archive"<?=($k['status'] ?? '') === 'archive' ? ' selected' : ''?>>Archived</option></select></div></div>
 <details<?=($k['notes'] ?? '') !== '' ? ' open' : ''?>><summary>Notes</summary><div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes" maxlength="20000"><?=h($k['notes'] ?? '')?></textarea></div></details>
-<button type="submit" class="save"><?=$id ? 'Save contact' : 'Add contact'?></button>
+<div class="form-actions"><button type="submit" class="save"><?=$id ? 'Save contact' : 'Add contact'?></button><a class="cancel" href="<?=h($k['client_id'] ? route('client', ['id' => $k['client_id']]) : route('clients'))?>">Cancel</a></div>
 </form>
 <?php cm_page_end('clients');

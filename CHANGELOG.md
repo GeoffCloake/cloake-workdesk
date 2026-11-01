@@ -3,8 +3,41 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.11.0 · build 20261101.1 — 1 November 2026
+**Status: built and tested locally (74/74 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data). Not yet deployed. Not yet user-confirmed.**
+First release of the enquiry-to-invoice roadmap (your 20 points, 1 Nov). **Includes database migration 003** (add-only, reversible).
+
+### Added — enquiries
+- **Received date** on every enquiry (defaults to today; set an earlier date for enquiries taken by phone). Existing enquiries keep the moment they were saved.
+- **Contact** for the enquiry, chosen from the client's contacts, or **＋ New contact** (name, email, phone) added to the client without leaving the form.
+- **Category › type** from your account names (as on tasks). Choosing a type **fills the title**, which you can still change.
+- **Statuses:** New, Quoted, Waiting, Accepted, Task created, Declined, Withdrawn, Duplicate.
+- **Enquiries list:** open enquiries by default; filter by status, category and received dates; search title, client, contact or number; shows received date, contact and type. (Was: last 50, no filters.)
+- **Edit after a task is created:** enquiries made in this app stay editable at any status, to fix mis-entries.
+- **Withdraw** or **mark as a duplicate of #n**, with a reason, optionally **cancelling the enquiry's open task(s)**.
+- **Delete** only for an enquiry with no task (its price lines go with it; a full copy is kept in the audit log). Enquiries with a task are withdrawn or marked duplicate instead.
+- Creating a task now also copies the **contact, category, type and received date**.
+
+### Added — tasks
+- **Sign off & close:** who, note, date; marks the task completed. Works on imported tasks too (status and completed date were already editable).
+- **Reopen** a closed task, with a required reason; the completed date and sign-off are cleared (kept in the history).
+
+### Added — everywhere
+- **Cancel** on every form, back to where you came from.
+- **Undo** after saving a client, contact, task, work entry or enquiry (including sign-off, reopen, withdraw). Shown once on the next page, usable for 30 minutes. It puts back the previous values only if nothing has changed since; otherwise it refuses and changes nothing. Undoing an undo = **Redo**.
+
+### Changed
+- **Time is hours and minutes only** (Log work, Work Log edit, billable time). The timer rounds to the nearest minute (at least 1). Times already stored with seconds keep them unless you change that time.
+- Database rollback (`php deploy/migrate.php rollback --confirm`) now undoes **only the latest** migration (`--all` for every one). Previously it undid all of them.
+
+### Database — migration 003 (`deploy/migrations/003_enquiry_signoff.*`)
+- Adds 6 columns to `enquiries` (received_at, contact_id, task_category, task_type, duplicate_of, closed_reason) and 3 to `tasks` (signed_off_at, signed_off_by, sign_off_note). Fills received_at from each enquiry's saved time and verifies it. No existing column or value is changed. v0.10.0 runs normally on the migrated database (tested).
+
+### Not in this release (planned)
+- Description pre-fill comes with project templates (v0.12), as do several price lines, several tasks per enquiry, and task stages.
+
 ## v0.10.0 · build 20261031.2 — 31 October 2026
-**Status: deployed to manager-dev 1 Nov 2026 ~11:40 with installer revision 2, and user-confirmed 11:49.** Tested locally beforehand: 62/62 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data.
+**Status: deployed to manager-dev 1 Nov 2026 ~11:40 with installer revision 2, and user-confirmed 11:49. Rollback target for v0.11.0.** Tested locally beforehand: 62/62 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data.
 Editing, to the rules you approved on 31 October. **Includes database migrations 001 and 002** (add-only, reversible; see below).
 
 ### Added — from your Fabrik forms (build 2)

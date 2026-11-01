@@ -50,11 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $new['details'] = $details;
             $new['work_date'] = m7date(cm_post('work_date', 10)) ?? throw new InvalidArgumentException('Select a valid work date.');
             $parts = [];
-            foreach (['hours', 'minutes', 'seconds', 'bill_hours', 'bill_minutes', 'bill_seconds'] as $k) { $v = cm_post($k, 5); if ($v === '') $v = '0'; if (!ctype_digit($v)) throw new InvalidArgumentException('Durations must be whole numbers.'); $parts[$k] = (int)$v; }
-            if ($parts['minutes'] > 59 || $parts['seconds'] > 59 || $parts['hours'] > 23 || $parts['bill_minutes'] > 59 || $parts['bill_seconds'] > 59 || $parts['bill_hours'] > 23) throw new InvalidArgumentException('Minutes and seconds must be 0–59 and hours 0–23.');
-            $secs = $parts['hours'] * 3600 + $parts['minutes'] * 60 + $parts['seconds'];
+            // v0.11: hours + minutes only. A stored time with seconds is kept unless its hours/minutes were changed.
+            foreach (['hours', 'minutes', 'bill_hours', 'bill_minutes'] as $k) { $v = cm_post($k, 5); if ($v === '') $v = '0'; if (!ctype_digit($v)) throw new InvalidArgumentException('Durations must be whole numbers.'); $parts[$k] = (int)$v; }
+            if ($parts['minutes'] > 59 || $parts['hours'] > 23 || $parts['bill_minutes'] > 59 || $parts['bill_hours'] > 23) throw new InvalidArgumentException('Minutes must be 0–59 and hours 0–23.');
+            $hm = fn(int $h, int $m, int $stored) => ($h * 3600 + $m * 60 === intdiv($stored, 60) * 60) ? $stored : $h * 3600 + $m * 60;
+            $secs = $hm($parts['hours'], $parts['minutes'], (int)$old['duration_seconds']);
             if ($secs < 1) throw new InvalidArgumentException('Enter a duration greater than zero.');
-            $billSecs = $bill === 'billable' ? $parts['bill_hours'] * 3600 + $parts['bill_minutes'] * 60 + $parts['bill_seconds'] : 0;
+            $billSecs = $bill === 'billable' ? $hm($parts['bill_hours'], $parts['bill_minutes'], (int)$old['billable_seconds']) : 0;
             if ($billSecs > $secs) throw new InvalidArgumentException('Billable time cannot exceed time worked.');
             $new['duration_seconds'] = $secs; $new['billable_seconds'] = $billSecs;
             // Clock times no longer describe the entry if date or duration changed.
@@ -102,7 +104,7 @@ cm_page_start($imported ? 'Update imported work entry' : 'Edit work entry', 'wor
 <?php if (!$imported): ?>
 <div class="field"><label for="details">What was done</label><textarea id="details" name="details" required maxlength="5000"><?=h($w['details'])?></textarea></div>
 <div class="field"><label for="work_date">Date</label><input type="date" id="work_date" name="work_date" required value="<?=h($w['work_date'] ?? substr((string)$w['started_at'], 0, 10))?>"></div>
-<fieldset class="field"><legend>Time worked</legend><div class="triple"><div><label for="hours">Hours</label><input id="hours" name="hours" type="number" inputmode="numeric" min="0" max="23" value="<?=$H?>"></div><div><label for="minutes">Minutes</label><input id="minutes" name="minutes" type="number" inputmode="numeric" min="0" max="59" value="<?=$Mi?>"></div><div><label for="seconds">Seconds</label><input id="seconds" name="seconds" type="number" inputmode="numeric" min="0" max="59" value="<?=$S?>"></div></div>
+<fieldset class="field"><legend>Time worked</legend><div class="duo"><div><label for="hours">Hours</label><input id="hours" name="hours" type="number" inputmode="numeric" min="0" max="23" value="<?=$H?>"></div><div><label for="minutes">Minutes</label><input id="minutes" name="minutes" type="number" inputmode="numeric" min="0" max="59" value="<?=$Mi?>"></div></div><?php if ($S): ?><p class="helper">Stored as <?=h(dur($w['duration_seconds']))?> <?=(int)$S?>s; the seconds are kept unless you change the hours or minutes.</p><?php endif; ?>
 <?php if ($w['started_at']): ?><p class="helper">Recorded as <?=h(substr((string)$w['started_at'], 11, 5))?>–<?=h(substr((string)$w['ended_at'], 11, 5))?>. Changing the date or duration clears these clock times.</p><?php endif; ?></fieldset>
 <?php endif; ?>
 <div class="field"><label for="client">Client <span class="opt">(optional)</span></label><?php cm_client_picker($clients, (string)($w['client_id'] ?? ''), false, 'No client'); ?></div>
@@ -111,8 +113,8 @@ cm_page_start($imported ? 'Update imported work entry' : 'Edit work entry', 'wor
 <div class="task-search" data-task-search hidden><label for="task-find" class="visually-hidden">Search all tasks</label><input id="task-find" type="search" placeholder="Search all tasks…" autocomplete="off"><div class="finder-results" data-task-results hidden></div></div></div>
 <div class="field"><label for="billability">Billing decision</label><select name="billability" id="billability"><?php foreach ($BILL as $k => $l): ?><option value="<?=h($k)?>"<?=$k === $w['billability'] ? ' selected' : ''?>><?=h($l)?></option><?php endforeach; ?></select></div>
 <?php if (!$imported): ?>
-<fieldset class="field"><legend>Billable time</legend><div class="triple"><div><label for="bill_hours">Hours</label><input id="bill_hours" name="bill_hours" type="number" inputmode="numeric" min="0" max="23" value="<?=$BH?>"></div><div><label for="bill_minutes">Minutes</label><input id="bill_minutes" name="bill_minutes" type="number" inputmode="numeric" min="0" max="59" value="<?=$BM?>"></div><div><label for="bill_seconds">Seconds</label><input id="bill_seconds" name="bill_seconds" type="number" inputmode="numeric" min="0" max="59" value="<?=$BS?>"></div></div><p class="helper">Used only when the decision is “Potentially billable”; otherwise saved as zero. No rate or charge is assigned.</p></fieldset>
+<fieldset class="field"><legend>Billable time</legend><div class="duo"><div><label for="bill_hours">Hours</label><input id="bill_hours" name="bill_hours" type="number" inputmode="numeric" min="0" max="23" value="<?=$BH?>"></div><div><label for="bill_minutes">Minutes</label><input id="bill_minutes" name="bill_minutes" type="number" inputmode="numeric" min="0" max="59" value="<?=$BM?>"></div></div><p class="helper">Used only when the decision is “Potentially billable”; otherwise saved as zero. No rate or charge is assigned.</p></fieldset>
 <div class="field"><label for="staff">Staff</label><input id="staff" name="staff" maxlength="100" value="<?=h($w['staff_key'] ?? '')?>"></div>
 <?php endif; ?>
-<button type="submit" class="save">Save entry</button></form>
+<div class="form-actions"><button type="submit" class="save">Save entry</button><a class="cancel" href="<?=h(preg_match('/^index\.php\?page=/', $back) ? $back : route('work'))?>">Cancel</a></div></form>
 <?php cm_page_end('work');

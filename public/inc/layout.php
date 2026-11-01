@@ -27,7 +27,22 @@ function cm_page_start(string $title, string $section, array $opt = []): void
 <div class="top-actions"><a class="top-find" href="<?=h(route('clients'))?>" aria-label="Find a client" data-finder-shortcut>Find client</a><form method="post" action="index.php" class="signout" data-signout><input type="hidden" name="action" value="logout"><button class="quiet" type="submit">Sign out</button></form></div></header>
 <div class="layout"><aside class="side" aria-label="Workspace"><div class="eyebrow">WORKSPACE</div><?php foreach ($side as $k => $v): ?><a class="nav<?=$section === $k ? ' current' : ''?>" href="<?=h(route($k))?>"<?=$section === $k ? ' aria-current="page"' : ''?>><?=h($v)?></a><?php endforeach; ?>
 <a class="nav nav-minor<?=$section === 'check' ? ' current' : ''?>" href="<?=h(route('check'))?>">Release check</a><p class="muted small">Imported records stay read-only. No Xero or invoice actions are enabled.</p><p class="muted small side-version"><?=h(cm_version_label())?></p></aside>
-<main id="main" tabindex="-1"><?php if (!empty($opt['back'])): ?><a class="back" href="<?=h($opt['back'][0])?>">‹ <?=h($opt['back'][1])?></a><?php endif; ?><?php if (($opt['h1'] ?? true)): ?><h1><?=h($title)?></h1><?php endif;
+<main id="main" tabindex="-1"><?php if (!empty($opt['back'])): ?><a class="back" href="<?=h($opt['back'][0])?>">‹ <?=h($opt['back'][1])?></a><?php endif; ?><?php cm_undo_bar(); ?><?php if (($opt['h1'] ?? true)): ?><h1><?=h($title)?></h1><?php endif;
+}
+
+/** True when the undo bar will show on this page (pages then skip their own plain "Saved." line). */
+function cm_undo_pending(): bool { $u = $_SESSION['cm_undo'] ?? null; return $u && !empty($u['show']) && time() - (int)$u['at'] <= CM_UNDO_WINDOW; }
+
+/** v0.11: "Saved … Undo" once, on the first page shown after an undoable save (see cm_audit / undo.php). */
+function cm_undo_bar(): void
+{
+    if (!empty($_SESSION['cm_undo_error'])) { ?><div class="alert" role="alert"><?=h((string)$_SESSION['cm_undo_error'])?></div><?php unset($_SESSION['cm_undo_error']); }
+    $u = $_SESSION['cm_undo'] ?? null;
+    if (!$u || empty($u['show'])) return;
+    $_SESSION['cm_undo']['show'] = false;
+    if (time() - (int)$u['at'] > CM_UNDO_WINDOW) return;
+    $isUndo = str_starts_with((string)$u['summary'], 'Undo: ');
+    ?><div class="undo-bar" role="status" data-testid="undo-bar"><span><?=$isUndo ? 'Undone.' : 'Saved.'?> <small class="muted"><?=h($isUndo ? substr((string)$u['summary'], 6) : (string)$u['summary'])?></small></span><form method="post" action="undo.php"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="event" value="<?=(int)$u['id']?>"><button type="submit"><?=$isUndo ? 'Redo' : 'Undo'?></button></form></div><?php
 }
 
 function cm_page_end(string $section, array $scripts = []): void

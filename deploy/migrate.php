@@ -5,7 +5,7 @@ declare(strict_types=1);
  *
  *   php deploy/migrate.php status
  *   php deploy/migrate.php apply
- *   php deploy/migrate.php rollback --confirm      (drops the added columns — see below)
+ *   php deploy/migrate.php rollback --confirm      (undoes the LATEST migration only; --all for every one)
  *   php deploy/migrate.php sql                     (writes phpMyAdmin SQL files for each migration)
  *
  * Uses the private config (CM_CONFIG env overrides the default path).
@@ -163,14 +163,19 @@ if ($cmd === 'apply') {
 }
 
 if ($cmd === 'rollback') {
-    if (!$confirm) { fwrite(STDERR, "Rollback drops the added columns and anything entered into them. Re-run with --confirm.\n"); exit(2); }
-    foreach (array_reverse($migrations) as $id => $m) {
-        foreach ($m['columns'] as $t => $cols) {
-            $present = array_values(array_intersect(array_keys($cols), existingColumns($pdo, $t)));
-            if ($present) { $pdo->exec(dropColumnsSql($t, $present)); echo "  $id — dropped " . count($present) . " columns from $t\n"; }
-        }
-        if (ledger($pdo)) $pdo->prepare('DELETE FROM schema_migrations WHERE id=?')->execute([$id]);
+    // Undoes only the LATEST migration that is present (v0.11+). --all undoes every migration (newest first).
+    if (!$confirm) { fwrite(STDERR, "Rollback drops the latest migration's added columns and anything entered into them. Re-run with --confirm (add --all to undo every migration).\n"); exit(2); }
+    $all = in_array('--all', $argv, true); $done = 0;
+    foreach (array_reverse($migrations, true) as $id => $m) {
+        $present = [];
+        foreach ($m['columns'] as $t => $cols) $present[$t] = array_values(array_intersect(array_keys($cols), existingColumns($pdo, $t)));
+        $recorded = in_array($id, ledger($pdo), true);
+        if (!$recorded && !array_filter($present)) continue;   // never applied: nothing to undo
+        foreach ($present as $t => $cols) if ($cols) { $pdo->exec(dropColumnsSql($t, $cols)); echo "  $id — dropped " . count($cols) . " columns from $t\n"; }
+        if ($recorded) $pdo->prepare('DELETE FROM schema_migrations WHERE id=?')->execute([$id]);
+        $done++;
+        if (!$all) break;
     }
-    echo "Rolled back.\n"; exit(0);
+    echo $done ? "Rolled back.\n" : "Nothing to roll back.\n"; exit(0);
 }
 fwrite(STDERR, "Usage: php deploy/migrate.php status|apply|rollback --confirm|sql\n"); exit(2);

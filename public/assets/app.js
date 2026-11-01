@@ -296,7 +296,7 @@
       presets.hidden = false;
       $$('button', presets).forEach(function (b) {
         b.addEventListener('click', function () {
-          var m = parseInt(b.getAttribute('data-min'), 10); H.value = Math.floor(m / 60); M.value = m % 60; S.value = 0;
+          var m = parseInt(b.getAttribute('data-min'), 10); H.value = Math.floor(m / 60); M.value = m % 60; if (S) S.value = 0;
           $$('button', presets).forEach(function (x) { x.classList.toggle('on', x === b); });
         });
       });
@@ -323,9 +323,11 @@
       store.set(TKEY, s); loop();
     });
     function useTimer() {
-      var t = Math.min(Math.round(elapsed(tstate()) / 1000), 86399);
-      if (t < 1) return false;
-      H.value = Math.floor(t / 3600); M.value = Math.floor(t % 3600 / 60); S.value = t % 60;
+      // v0.11: whole minutes (rounded; at least 1 minute once the timer has run).
+      var ms = elapsed(tstate());
+      if (ms < 1000) return false;
+      var t = Math.min(Math.max(1, Math.round(ms / 60000)), 1439) * 60;
+      H.value = Math.floor(t / 3600); M.value = Math.floor(t % 3600 / 60); if (S) S.value = 0;
       store.del(TKEY); clearInterval(tick);
       var d = $('input[name="mode"][value="duration"]', wf); d.checked = true; syncMode(); paint(); return true;
     }
@@ -358,6 +360,15 @@
         var keep = typSel.value; typSel.replaceChildren(el('option', { value: '', text: '—' }));
         (map[catSel.value] || []).forEach(function (t) { typSel.appendChild(el('option', { value: t, text: t })); });
         if ((map[catSel.value] || []).indexOf(keep) >= 0) typSel.value = keep;
+      });
+    }
+    // Enquiry: choosing a type fills the title while it is empty or still the last automatic fill.
+    var tIn = $('[data-title-from-type]', tfm);
+    if (tIn && typSel) {
+      var lastAuto = '';
+      typSel.addEventListener('change', function () {
+        var cur = tIn.value.trim();
+        if (typSel.value && (cur === '' || cur === lastAuto)) { tIn.value = typSel.value; lastAuto = typSel.value; }
       });
     }
   }

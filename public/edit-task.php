@@ -183,5 +183,5 @@ cm_page_start($title, 'tasks', ['back' => $id ? [route('task', ['id' => $id]), '
 <div class="field"><label class="check"><input type="checkbox" name="billing_advised" value="1"<?=!empty($t['billing_advised']) ? ' checked' : ''?>> Billing advised</label></div>
 <p class="helper">Recorded for billing review only. Nothing is invoiced or sent to Xero.</p></details>
 <?php endif; ?>
-<button type="submit" class="save"><?=$id ? 'Save task' : 'Create task'?></button></form>
+<div class="form-actions"><button type="submit" class="save"><?=$id ? 'Save task' : 'Create task'?></button><a class="cancel" href="<?=h($id ? route('task', ['id' => $id]) : ($preClient ? route('client', ['id' => $preClient]) : route('tasks')))?>">Cancel</a></div></form>
 <?php cm_page_end('tasks');

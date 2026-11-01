@@ -24,6 +24,9 @@ $mig002 = ['tasks.contact_id', 'tasks.assigned_to', 'tasks.queue', 'tasks.task_c
 $missing002 = array_values(array_filter($mig002, fn($c) => !isset($cols[$c])));
 $add('Migration 001 — editable client & contact details', !$missing001 && in_array('001_editable_details', $ledger, true), $missing001 ? 'missing: ' . implode(', ', $missing001) : (in_array('001_editable_details', $ledger, true) ? 'applied' : 'columns present but not recorded'));
 $add('Migration 002 — task workload fields', !$missing002 && in_array('002_task_workload_fields', $ledger ?? [], true), $missing002 ? 'missing: ' . implode(', ', $missing002) : 'applied');
+$mig003 = ['enquiries.received_at', 'enquiries.contact_id', 'enquiries.task_category', 'enquiries.task_type', 'enquiries.duplicate_of', 'enquiries.closed_reason', 'tasks.signed_off_at', 'tasks.signed_off_by', 'tasks.sign_off_note'];
+$missing003 = array_values(array_filter($mig003, fn($c) => !isset($cols[$c])));
+$add('Migration 003 — enquiry details & task sign-off', !$missing003 && in_array('003_enquiry_signoff', $ledger ?? [], true), $missing003 ? 'missing: ' . implode(', ', $missing003) : (in_array('003_enquiry_signoff', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
 $uq = oneRow($pdo, "SELECT COUNT(*) n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tasks' AND INDEX_NAME='uq_task_source'");
 $add('Duplicate-conversion guard (tasks unique source key)', (int)$uq['n'] > 0);
 $counts = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM clients) clients, (SELECT COUNT(*) FROM contacts) contacts,

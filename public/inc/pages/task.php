@@ -13,12 +13,18 @@ $entries = allRows($pdo, 'SELECT id,details,staff_key,work_date,started_at,durat
 ?>
 <header class="client-head"><h1><?=h($t['title'])?></h1>
 <p class="client-sub"><?php if ($t['client_id']): ?><a href="<?=h(route('client', ['id' => $t['client_id']]))?>"><?=h($t['client_name'])?></a><?php else: ?>Unassigned<?php endif; ?> · <?=($t['source_system'] ?? '') === 'fabrik' ? 'Original task #' . h($t['source_id']) : 'Task #' . (int)$t['id']?></p></header>
-<?php if (($_GET['saved'] ?? null) === '1'): ?><div class="success" role="status">Saved.</div><?php elseif (($_GET['saved'] ?? null) === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
+<?php if (($_GET['saved'] ?? null) === '1' && !cm_undo_pending()): ?><div class="success" role="status">Saved.</div><?php elseif (($_GET['saved'] ?? null) === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
 <nav class="client-actions three" aria-label="Task actions">
   <a class="ca primary" href="add-work.php?task_id=<?=(int)$t['id']?>"><span aria-hidden="true">＋</span> Log work</a>
   <a class="ca" href="edit-task.php?id=<?=(int)$t['id']?>"><?=$t['legacy_record'] === null ? 'Edit task' : 'Update status'?></a>
   <?php if (!empty($t['enquiry_id'])): ?><a class="ca" href="convert-enquiry.php?id=<?=(int)$t['enquiry_id']?>">Enquiry #<?=(int)$t['enquiry_id']?></a><?php elseif ($t['client_id']): ?><a class="ca" href="<?=h(route('client', ['id' => $t['client_id']]))?>">Client</a><?php endif; ?>
 </nav>
+<?php
+$closed = in_array(strtolower(trim((string)$t['status'])), CM_CLOSED_TASK_STATUSES, true);
+$soErr = ($_SESSION['cm_signoff_error']['task'] ?? 0) === (int)$t['id'] ? (string)$_SESSION['cm_signoff_error']['msg'] : ''; unset($_SESSION['cm_signoff_error']);
+$hasSignoff = array_key_exists('signed_off_at', $t);
+?>
+<?php if ($soErr): ?><div class="alert" role="alert"><?=h($soErr)?></div><?php endif; ?>
 <div class="client-summary">
   <div><small>Status</small><strong><?=h(cm_status_label($t['status']))?></strong></div>
   <div><small>Required</small><strong><?=h(niceDate($t['required_by']))?></strong></div>
@@ -31,6 +37,19 @@ $entries = allRows($pdo, 'SELECT id,details,staff_key,work_date,started_at,durat
   <?php if (!empty($t['domains'])): ?><dt>Domain(s)</dt><dd><?=h($t['domains'])?></dd><?php endif; ?>
   <?php if (isset($t['queue']) && $t['queue'] !== null && (int)$t['queue'] !== 0): ?><dt>Queue</dt><dd><?=(int)$t['queue']?></dd><?php endif; ?>
 </dl>
+<?php if ($hasSignoff && $closed): ?>
+<section class="panel signoff signoff-done" data-testid="signoff"><h2 class="panel-title"><?=$t['signed_off_at'] ? 'Signed off' : h(cm_status_label($t['status']))?></h2>
+<?php if ($t['signed_off_at']): ?><p><?=h($t['signed_off_by'] ?: '—')?> · <?=h(niceDate($t['signed_off_at']))?><?=$t['sign_off_note'] ? ' — ' . h($t['sign_off_note']) : ''?></p><?php elseif ($t['completed_at']): ?><p class="muted small">Completed <?=h(niceDate($t['completed_at']))?>.</p><?php endif; ?>
+<details><summary>Reopen task</summary><form method="post" action="task-signoff.php" class="form"><input type="hidden" name="id" value="<?=(int)$t['id']?>"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="action" value="reopen">
+<div class="field"><label for="reopen_reason">Reason</label><input id="reopen_reason" name="reopen_reason" maxlength="500" required placeholder="Why is it being reopened?"></div>
+<div class="form-actions"><button type="submit" class="secondary">Reopen</button></div></form></details></section>
+<?php elseif ($hasSignoff): ?>
+<details class="signoff" data-testid="signoff"><summary>Sign off &amp; close</summary><form method="post" action="task-signoff.php" class="form"><input type="hidden" name="id" value="<?=(int)$t['id']?>"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="action" value="signoff">
+<div class="pair"><div class="field"><label for="signed_off_by">Signed off by</label><input id="signed_off_by" name="signed_off_by" maxlength="100" required list="signoff-staff" value="<?=h((string)($_SESSION['cm_last_staff'] ?? ''))?>"><datalist id="signoff-staff"><?php foreach (cm_staff_names($pdo) as $sn): ?><option value="<?=h(ucfirst($sn))?>"><?php endforeach; ?></datalist></div>
+<div class="field"><label for="sign_off_note">Note (optional)</label><input id="sign_off_note" name="sign_off_note" maxlength="500" placeholder="e.g. approved by client"></div></div>
+<p class="helper">Marks the task completed<?=$t['completed_at'] ? '' : ' today'?>. It can be reopened later.</p>
+<div class="form-actions"><button type="submit" class="save">Sign off &amp; close</button></div></form></details>
+<?php endif; ?>
 <div class="panel"><h2 class="panel-title">Instructions</h2><div class="prewrap"><?=h($t['instructions'] ?: 'No instructions recorded')?></div></div>
 <?php if (!empty($t['notes'])): ?><div class="panel"><h2 class="panel-title">Notes</h2><div class="prewrap"><?=h($t['notes'])?></div></div><?php endif; ?>
 <details><summary>Pricing &amp; billing</summary><dl><?php foreach (['pricing' => 'Pricing', 'chargeable' => 'Chargeable', 'agreed_fee_ex_gst' => 'Original set/estimated value', 'legacy_billing_amount_ex_gst' => 'Legacy billing amount', 'billing_advised' => 'Billing advised', 'invoice_number' => 'Invoice number', 'invoice_reference' => 'Invoice reference', 'purchase_order_no' => 'Purchase order', 'job_number' => 'Job number'] as $key => $label): ?><dt><?=h($label)?></dt><dd><?=h($t[$key] ?? '—')?></dd><?php endforeach; ?></dl><p class="muted small">Historical values only. No totals are recalculated here.</p></details>

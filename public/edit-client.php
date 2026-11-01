@@ -84,7 +84,7 @@ cm_page_start($id ? 'Edit client' : 'New client', 'clients', ['back' => $id ? [r
 <div class="field narrow"><label for="credit_approved">Credit approved</label><select id="credit_approved" name="credit_approved"><?php foreach (['' => '—', 'yes' => 'Yes', 'no' => 'No'] as $k => $l): ?><option value="<?=h($k)?>"<?=(string)($c['credit_approved'] ?? '') === $k ? ' selected' : ''?>><?=h($l)?></option><?php endforeach; ?></select></div><?php endif; ?>
 <?php $input('xero_contact_id', 'Xero contact reference'); ?><p class="helper">Reference only. Nothing is sent to Xero.</p></details>
 <?php if (!$id && $dupes): ?><div class="field"><label class="check"><input type="checkbox" name="confirm_duplicate" value="1"> Create anyway — this is a different client</label></div><?php endif; ?>
-<button type="submit" class="save"><?=$id ? 'Save client' : 'Create client'?></button>
+<div class="form-actions"><button type="submit" class="save"><?=$id ? 'Save client' : 'Create client'?></button><a class="cancel" href="<?=h($id ? route('client', ['id' => $id]) : route('clients'))?>">Cancel</a></div>
 <?php if ($id): ?><p class="helper">To stop using a client, set Status to Archived. Clients are never deleted, so their history stays intact.</p><?php endif; ?>
 </form>
 <?php cm_page_end('clients');

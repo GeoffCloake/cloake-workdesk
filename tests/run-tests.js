@@ -164,7 +164,7 @@ function protectedChecksums() {
 
   /* ================= layout at phone widths + desktop ================= */
   const routes = ['index.php?page=today', 'index.php?page=clients', 'index.php?page=client&id=' + S.client.id, 'index.php?page=tasks', 'index.php?page=task&id=' + S.openTask.id,
-    'index.php?page=task&id=' + S.fabrikTask, 'index.php?page=work', 'index.php?page=enquiries', 'index.php?page=invoicing', 'index.php?page=items', 'index.php?page=more', 'index.php?page=check',
+    'index.php?page=task&id=' + S.fabrikTask, 'index.php?page=work', 'index.php?page=enquiries', 'index.php?page=enquiries&status=all', 'index.php?page=invoicing', 'index.php?page=items', 'index.php?page=more', 'index.php?page=check',
     'add-work.php', 'add-work.php?client_id=' + S.client.id, 'add-enquiry.php', 'convert-enquiry.php?id=1', 'edit-task.php?id=2048', 'edit-enquiry.php?id=1',
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
@@ -350,14 +350,14 @@ function protectedChecksums() {
     const before = workMax();
     await go(P, 'add-work.php'); await P.fill('#details', 'Test W04a'); await P.check('input[name=mode][value=times]'); await P.fill('#start', '11:00'); await P.fill('#end', '10:00');
     await Promise.all([P.waitForNavigation(), P.click('button.save')]); assert(/Finish must follow start/.test(await P.locator('.alert').innerText()), 'times msg');
-    await go(P, 'add-work.php'); await P.fill('#details', 'Test W04b'); await P.fill('#hours', '0'); await P.fill('#minutes', '0'); await P.fill('#seconds', '0');
+    await go(P, 'add-work.php'); await P.fill('#details', 'Test W04b'); await P.fill('#hours', '0'); await P.fill('#minutes', '0'); assert(await P.locator('#seconds').count() === 0, 'seconds box still shown');
     await Promise.all([P.waitForNavigation(), P.click('button.save')]); assert(/greater than zero/.test(await P.locator('.alert').innerText()), 'zero msg');
     await go(P, 'add-work.php'); await P.fill('#details', 'Test W04c'); await P.click('details summary:has-text("Billing")');
     await P.selectOption('#billability', 'billable'); await P.fill('#bill_hours', '1');
     await Promise.all([P.waitForNavigation(), P.click('button.save')]); assert(/cannot exceed/.test(await P.locator('.alert').innerText()), 'billable msg');
     assert(workMax() === before, 'a row was created');
   });
-  await test('W05', 'Timer: start, survives reload, stop fills duration, saved as exact seconds', async () => {
+  await test('W05', 'Timer: start, survives reload, stop fills duration in whole minutes (at least 1), saved', async () => {
     await P.evaluate(() => localStorage.removeItem('cm_timer'));
     await go(P, 'add-work.php?client_id=' + S.client.id);
     await P.check('input[name=mode][value=timer]');
@@ -369,13 +369,13 @@ function protectedChecksums() {
     const clock = await P.locator('[data-timer-clock]').innerText();
     assert(/^0:00:0[2-4]$/.test(clock), 'clock ' + clock);
     await P.click('[data-timer-stop]');
-    const secs = +(await P.inputValue('#seconds')), mins = +(await P.inputValue('#minutes'));
-    assert(mins === 0 && secs >= 2 && secs <= 4, `filled ${mins}m ${secs}s`);
+    const hrs = +(await P.inputValue('#hours')), mins = +(await P.inputValue('#minutes'));
+    assert(hrs === 0 && mins === 1, `filled ${hrs}h ${mins}m`);
     const before = workMax();
     await P.fill('#details', 'Test W05 timer');
     await Promise.all([P.waitForNavigation(), P.click('button.save')]);
     const d = num(`SELECT duration_seconds FROM work_log WHERE id>${before}`);
-    assert(d >= 2 && d <= 4, 'saved ' + d);
+    assert(d === 60, 'saved ' + d);
   });
   await test('W06', 'Double-tapping Save creates exactly one entry', async () => {
     await go(P, 'add-work.php'); const before = workMax();
@@ -412,7 +412,7 @@ function protectedChecksums() {
     await P.click('summary:has-text("Next action")'); await P.fill('#next_action', 'Send draft layout');
     const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date(Date.now() + 86400000));
     await P.fill('#next_action_due', tomorrow);
-    await P.click('summary:has-text("breakdown")'); await P.fill('#line_description', 'Gallery page build'); await P.fill('#line_unit_price', '450.00');
+    await P.click('summary:has-text("price estimate")'); await P.fill('#line_description', 'Gallery page build'); await P.fill('#line_unit_price', '450.00');
     await Promise.all([P.waitForNavigation(), P.click('button.save')]);
     assert(await P.locator('.success a[href^="convert-enquiry.php"]').count() === 1, 'no convert link after save');
     const r = sql(`SELECT id,client_id,status,next_action_due FROM enquiries WHERE id>${before}`);
@@ -479,9 +479,11 @@ function protectedChecksums() {
     const payload = one(`SELECT payload FROM activity_events WHERE task_id=${tid} AND event_kind='task_updated' ORDER BY id DESC LIMIT 1`);
     assert(payload && payload.includes('"status"') && payload.includes('"previous"'), 'audit payload ' + payload);
   });
-  await test('D03', 'Converted enquiries cannot be edited; unconverted ones save with an audit event', async () => {
+  await test('D03', 'Converted app-made enquiries stay editable (no delete offered); unconverted ones save with an audit event', async () => {
     await go(P, 'edit-enquiry.php?id=' + newEnquiry);
-    assert(await P.locator('form.form').count() === 0, 'converted enquiry editable');
+    assert(await P.locator('input[name=action][value=save]').count() === 1, 'converted enquiry not editable');
+    assert(await P.locator('input[name=action][value=delete]').count() === 0, 'delete offered although it has a task');
+    assert(/Linked task/.test(await P.locator('.notice').first().innerText()), 'linked task not shown');
     const open = +one(`SELECT e.id FROM enquiries e WHERE e.status='enquiry' AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.enquiry_id=e.id) ORDER BY e.id LIMIT 1`);
     if (!open) { note('no unconverted enquiry to edit'); return; }
     await go(P, 'edit-enquiry.php?id=' + open);
@@ -507,7 +509,7 @@ function protectedChecksums() {
     await P.fill('#phone', '03 555 0199');
     await openDetails(P, 'Notes'); await P.fill('#notes', 'Test X01 note\nsecond line');
     await save(P);
-    assert(P.url().includes('page=client&id=' + cid) && /Saved/.test(await P.locator('.success').innerText()), 'no saved message: ' + P.url());
+    assert(P.url().includes('page=client&id=' + cid) && /Saved/.test(await P.locator('.success, [data-testid=undo-bar]').first().innerText()), 'no saved message: ' + P.url());
     const r = sql(`SELECT phone,notes LIKE 'Test X01 note%second line',updated_at IS NOT NULL FROM clients WHERE id=${cid}`)[0];
     assert(r[0] === '03 555 0199' && r[1] === '1' && r[2] === '1', 'row ' + r);
     assert(one(`SELECT CRC32(CAST(legacy_record AS CHAR)) FROM clients WHERE id=${cid}`) === origBefore, 'legacy_record changed');
@@ -607,7 +609,7 @@ function protectedChecksums() {
   await test('X09', 'Edit a new Work Log entry: duration, client, billing decision and billable time saved; billable > worked refused', async () => {
     await go(P, 'edit-work.php?id=4096');
     await setSelect(P, '[data-client-select]', S.client.id);
-    await P.fill('#hours', '1'); await P.fill('#minutes', '0'); await P.fill('#seconds', '0');
+    await P.fill('#hours', '1'); await P.fill('#minutes', '0');
     await P.selectOption('#billability', 'billable'); await P.fill('#bill_hours', '2'); await save(P);
     assert(/cannot exceed/.test(await P.locator('.alert').innerText()), 'over-billable accepted');
     await go(P, 'edit-work.php?id=4096'); await setSelect(P, '[data-client-select]', S.client.id);
@@ -754,6 +756,179 @@ function protectedChecksums() {
     const fmt = s => Math.floor(s / 3600) + 'h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + 'm';
     const t = await P.locator('[data-testid=task-totals]').innerText();
     assert(t.includes(fmt(+db[0]) + ' worked') && t.includes(fmt(+db[1]) + ' billable'), `"${t}" vs ${db}`);
+  });
+
+  /* ================= v0.11: enquiries, sign-off, undo, cancel, minutes ================= */
+  const nzDate = offsetDays => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date(Date.now() + offsetDays * 86400000));
+  const undoClick = async page => { await Promise.all([page.waitForNavigation(), page.click('[data-testid=undo-bar] button')]); };
+  let n01 = 0, n07task = 0;
+  await test('N01', 'Quick Enquiry: received date, category › type fills the title, new contact created and linked, audited', async () => {
+    await go(P, 'add-enquiry.php?client_id=' + S.client.id);
+    const cats = await P.$$eval('#task_category option', o => o.map(x => x.value).filter(Boolean));
+    assert(cats.length, 'no categories');
+    let cat = '', types = [];
+    for (const c of cats) { await P.selectOption('#task_category', c); types = await P.$$eval('#task_type option', o => o.map(x => x.value).filter(Boolean)); if (types.length) { cat = c; break; } }
+    assert(types.length, 'no category has types');
+    await P.selectOption('#task_type', types[0]);
+    assert(await P.inputValue('#title') === types[0], 'title not filled from type: ' + await P.inputValue('#title'));
+    await P.fill('#title', 'Test N01 ' + types[0]);
+    const rec = nzDate(-3); await P.fill('#received_on', rec);
+    await openDetails(P, 'New contact'); await P.fill('#new_contact_name', 'Nora Testwell'); await P.fill('#new_contact_email', 'nora.n01@example.nz');
+    const before = enqMax();
+    await save(P);
+    const r = sql(`SELECT id,DATE(received_at),task_category,task_type,contact_id,status FROM enquiries WHERE id>${before}`);
+    assert(r.length === 1 && r[0][1] === rec && r[0][2] === cat && r[0][3] === types[0] && r[0][5] === 'enquiry', 'row ' + JSON.stringify(r));
+    const k = sql(`SELECT client_id,email,source_system FROM contacts WHERE id=${r[0][4]}`)[0];
+    assert(k && +k[0] === S.client.id && k[1] === 'nora.n01@example.nz' && k[2] === 'app', 'contact ' + k);
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE enquiry_id=${r[0][0]} AND event_kind='enquiry_created'`) === 1, 'enquiry audit');
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='contact_created' AND JSON_EXTRACT(payload,'$.contact_id')=${r[0][4]}`) === 1, 'contact audit');
+    n01 = +r[0][0];
+  });
+  await test('N02', 'Received date in the future, or a contact of another client, is refused; nothing saved', async () => {
+    await go(P, 'add-enquiry.php?client_id=' + S.client.id); const before = enqMax();
+    await P.fill('#title', 'Test N02 future'); await P.evaluate(() => document.querySelector('#received_on').removeAttribute('max'));
+    await P.fill('#received_on', nzDate(5)); await save(P);
+    assert(/future/.test(await P.locator('.alert').innerText()) && enqMax() === before, 'future date accepted');
+    const foreign = +one(`SELECT id FROM contacts WHERE client_id IS NOT NULL AND client_id<>${S.client.id} ORDER BY id LIMIT 1`);
+    await go(P, 'add-enquiry.php?client_id=' + S.client.id);
+    await P.fill('#title', 'Test N02 foreign contact');
+    await P.evaluate(id => { const s = document.querySelector('#contact_id'); const o = document.createElement('option'); o.value = String(id); s.appendChild(o); s.value = String(id); }, foreign);
+    await save(P);
+    assert(/different client/.test(await P.locator('.alert').innerText()) && enqMax() === before, 'foreign contact accepted');
+  });
+  await test('N03', 'Enquiries list: open by default (withdrawn hidden), status filter, search by contact, received-date filter match the database', async () => {
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,received_at,created_at) VALUES (${S.anyClient},'Test N03 withdrawn one','normal','withdrawn',NOW(),NOW()),(${S.anyClient},'Test N03 quoted one','normal','quoted',NOW(),NOW())`);
+    const titles = async u => { await go(P, u); return P.$$eval('.compact-list a.record strong', s => s.map(x => x.textContent)); };
+    let t = await titles('index.php?page=enquiries');
+    assert(t.includes('Test N03 quoted one') && !t.includes('Test N03 withdrawn one'), 'default list ' + t.slice(0, 8).join(' | '));
+    t = await titles('index.php?page=enquiries&status=withdrawn');
+    assert(t.includes('Test N03 withdrawn one') && t.length === num(`SELECT COUNT(*) FROM enquiries WHERE status='withdrawn'`), 'withdrawn filter');
+    t = await titles('index.php?page=enquiries&status=all&q=' + encodeURIComponent('nora testwell'));
+    assert(t.length === 1 && t[0].startsWith('Test N01'), 'contact search ' + t.join(' | '));
+    const d = nzDate(-3);
+    t = await titles(`index.php?page=enquiries&status=all&from=${d}&to=${d}`);
+    assert(t.length === num(`SELECT COUNT(*) FROM enquiries WHERE DATE(COALESCE(received_at,created_at))='${d}'`) && t.some(x => x.startsWith('Test N01')), 'date filter ' + t.length);
+  });
+  await test('N04', 'Withdraw an enquiry and cancel its open task; Undo restores the enquiry, Redo withdraws it again', async () => {
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,received_at,created_at) VALUES (${S.client.id},'Test N04 enquiry','normal','task_created',NOW(),NOW())`);
+    const e = num('SELECT MAX(id) FROM enquiries');
+    sql(`INSERT INTO tasks (client_id,enquiry_id,source_system,source_id,title,status) VALUES (${S.client.id},${e},'enquiry','${e}','Test N04 task','open')`);
+    const t = num('SELECT MAX(id) FROM tasks');
+    await go(P, 'edit-enquiry.php?id=' + e);
+    await P.check('input[name=close_kind][value=withdrawn]'); await P.fill('#closed_reason', 'Client changed their mind'); await P.check('input[name=cancel_tasks]');
+    await Promise.all([P.waitForNavigation(), P.click('[data-close-save]')]);
+    let r = sql(`SELECT status,closed_reason FROM enquiries WHERE id=${e}`)[0];
+    assert(r[0] === 'withdrawn' && r[1] === 'Client changed their mind' && one(`SELECT status FROM tasks WHERE id=${t}`) === 'cancelled', 'state ' + r);
+    assert(audit(`task_id=${t}`, 'task_updated') && audit(`enquiry_id=${e}`, 'enquiry_updated'), 'audit');
+    assert(await P.locator('[data-testid=undo-bar]').count() === 1, 'no undo bar');
+    await undoClick(P);
+    r = sql(`SELECT status,closed_reason FROM enquiries WHERE id=${e}`)[0];
+    assert(r[0] === 'task_created' && r[1] === null, 'undo state ' + r);
+    assert(/Redo/.test(await P.locator('[data-testid=undo-bar] button').innerText()), 'no redo offered');
+    await undoClick(P);
+    assert(one(`SELECT status FROM enquiries WHERE id=${e}`) === 'withdrawn', 'redo');
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE enquiry_id=${e} AND event_kind='enquiry_updated' AND summary LIKE 'Undo:%'`) === 1, 'undo audited');
+  });
+  await test('N05', 'Mark duplicate: unknown number refused; valid number saved and shown in the list', async () => {
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,received_at,created_at) VALUES (${S.client.id},'Test N05 duplicate','normal','enquiry',NOW(),NOW())`);
+    const e = num('SELECT MAX(id) FROM enquiries');
+    await go(P, 'edit-enquiry.php?id=' + e);
+    await P.check('input[name=close_kind][value=duplicate]'); await P.fill('#duplicate_of', '9999999');
+    await Promise.all([P.waitForNavigation(), P.click('[data-close-save]')]);
+    assert(/does not exist/.test(await P.locator('.alert').innerText()) && one(`SELECT status FROM enquiries WHERE id=${e}`) === 'enquiry', 'unknown accepted');
+    await P.check('input[name=close_kind][value=duplicate]'); await P.fill('#duplicate_of', String(n01));
+    await Promise.all([P.waitForNavigation(), P.click('[data-close-save]')]);
+    const r = sql(`SELECT status,duplicate_of FROM enquiries WHERE id=${e}`)[0];
+    assert(r[0] === 'duplicate' && +r[1] === n01, 'row ' + r);
+    await go(P, 'index.php?page=enquiries&status=duplicate');
+    assert((await P.locator('.compact-list').innerText()).includes('Duplicate of #' + n01), 'list text');
+  });
+  await test('N06', 'Delete: an enquiry with no task (and its price lines) is deleted with a snapshot audit; one with a task is refused even to a forged POST', async () => {
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,received_at,created_at) VALUES (${S.client.id},'Test N06 mistake','normal','enquiry',NOW(),NOW())`);
+    const e = num('SELECT MAX(id) FROM enquiries');
+    sql(`INSERT INTO breakdown_items (enquiry_id,description,quantity,unit_price_ex_gst,pricing_mode,status) VALUES (${e},'Test N06 line',1,10,'set','proposed')`);
+    await go(P, 'edit-enquiry.php?id=' + e);
+    await P.check('input[name=confirm_delete]');
+    await Promise.all([P.waitForNavigation(), P.click('button.danger')]);
+    assert(P.url().includes('page=enquiries') && /deleted/.test(await P.locator('.success').innerText()), 'landed ' + P.url());
+    assert(!one(`SELECT id FROM enquiries WHERE id=${e}`) && !num(`SELECT COUNT(*) FROM breakdown_items WHERE enquiry_id=${e}`), 'not deleted');
+    assert((audit(`event_kind='enquiry_deleted' AND JSON_EXTRACT(payload,'$.enquiry.id')=${e}`, 'enquiry_deleted') || '').includes('Test N06 mistake'), 'snapshot audit');
+    const withTask = +one(`SELECT e.id FROM enquiries e JOIN tasks t ON t.enquiry_id=e.id WHERE e.legacy_source_id IS NULL ORDER BY e.id LIMIT 1`);
+    await go(P, 'edit-enquiry.php?id=' + withTask);
+    assert(await P.locator('input[name=action][value=delete]').count() === 0, 'delete offered');
+    const v = await ver(P);
+    const res = await P.request.post(BASE + 'edit-enquiry.php', { form: { id: String(withTask), csrf: v.csrf, ver: v.ver, action: 'delete', confirm_delete: 'yes' } });
+    assert(res.status() === 200 && /cannot be deleted/.test(await res.text()) && one(`SELECT id FROM enquiries WHERE id=${withTask}`), 'forged delete');
+  });
+  await test('N07', 'Create task copies contact, category, type and received date from the enquiry', async () => {
+    await go(P, 'convert-enquiry.php?id=' + n01);
+    assert(/Received/.test(await P.locator('dl.facts').innerText()) && /Nora Testwell/.test(await P.locator('dl.facts').innerText()), 'facts');
+    await Promise.all([P.waitForNavigation(), P.click('form[data-once] button')]);
+    const e = sql(`SELECT contact_id,task_category,task_type,received_at FROM enquiries WHERE id=${n01}`)[0];
+    const t = sql(`SELECT id,contact_id,task_category,task_type,received_at FROM tasks WHERE enquiry_id=${n01}`)[0];
+    assert(t && t[1] === e[0] && t[2] === e[1] && t[3] === e[2] && t[4] === e[3], 'task ' + t + ' vs ' + e);
+    n07task = +t[0];
+  });
+  await test('N08', 'Sign off a task (who, note) and reopen it with a reason; a reopen without a reason is refused', async () => {
+    await go(P, 'index.php?page=task&id=' + n07task);
+    await openDetails(P, 'Sign off'); await P.fill('#signed_off_by', 'Geoff'); await P.fill('#sign_off_note', 'Approved by client');
+    await Promise.all([P.waitForNavigation(), P.click('[data-testid=signoff] button[type=submit]')]);
+    let r = sql(`SELECT status,completed_at,signed_off_at,signed_off_by,sign_off_note FROM tasks WHERE id=${n07task}`)[0];
+    assert(r[0] === 'completed' && r[1] && r[2] && r[3] === 'Geoff' && r[4] === 'Approved by client', 'signed ' + r);
+    assert(/Signed off/.test(await P.locator('[data-testid=signoff]').innerText()) && /Geoff/.test(await P.locator('[data-testid=signoff]').innerText()), 'panel');
+    const csrf = await P.inputValue('[data-testid=signoff] input[name=csrf]');
+    await P.request.post(BASE + 'task-signoff.php', { form: { id: String(n07task), csrf, action: 'reopen', reopen_reason: '' }, maxRedirects: 0 });
+    assert(one(`SELECT status FROM tasks WHERE id=${n07task}`) === 'completed', 'reopened without reason');
+    await go(P, 'index.php?page=task&id=' + n07task);
+    assert(/reason/i.test(await P.locator('.alert').innerText()), 'no message for missing reason');
+    await openDetails(P, 'Reopen'); await P.fill('#reopen_reason', 'Client found a typo');
+    await Promise.all([P.waitForNavigation(), P.click('[data-testid=signoff] button[type=submit]')]);
+    r = sql(`SELECT status,completed_at,signed_off_at,signed_off_by FROM tasks WHERE id=${n07task}`)[0];
+    assert(r[0] === 'in progress' && r[1] === null && r[2] === null && r[3] === null, 'reopened ' + r);
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE task_id=${n07task} AND summary LIKE 'Task reopened: Client found a typo%'`) === 1, 'audit');
+  });
+  await test('N09', 'Imported task can be signed off (workload field); Undo puts it back exactly', async () => {
+    const t = +one(`SELECT id FROM tasks WHERE source_system='fabrik' AND NOT (${closed('status')}) AND completed_at IS NULL ORDER BY id LIMIT 1`);
+    const before = sql(`SELECT status,COALESCE(completed_at,'') FROM tasks WHERE id=${t}`)[0];
+    await go(P, 'index.php?page=task&id=' + t);
+    await openDetails(P, 'Sign off'); await P.fill('#signed_off_by', 'Roselyn');
+    await Promise.all([P.waitForNavigation(), P.click('[data-testid=signoff] button[type=submit]')]);
+    assert(one(`SELECT status FROM tasks WHERE id=${t}`) === 'completed', 'not signed off');
+    await undoClick(P);
+    const after = sql(`SELECT status,COALESCE(completed_at,''),signed_off_at FROM tasks WHERE id=${t}`)[0];
+    assert(after[0] === before[0] && after[1] === before[1] && after[2] === null, 'undo ' + after + ' vs ' + before);
+  });
+  await test('N10', 'Undo a client edit restores the old value; if it changed again since, Undo refuses and changes nothing', async () => {
+    const old = one(`SELECT COALESCE(phone,'') FROM clients WHERE id=${x03}`);
+    await go(P, 'edit-client.php?id=' + x03); await P.fill('#phone', '03 555 0909'); await save(P);
+    assert(await P.locator('[data-testid=undo-bar]').count() === 1, 'no undo bar');
+    await undoClick(P);
+    assert(one(`SELECT COALESCE(phone,'') FROM clients WHERE id=${x03}`) === old, 'not restored');
+    await go(P, 'edit-client.php?id=' + x03); await P.fill('#phone', '03 555 1111'); await save(P);
+    sql(`UPDATE clients SET phone='03 555 2222' WHERE id=${x03}`);
+    await undoClick(P);
+    assert(/changed again/.test(await P.locator('.alert').innerText()) && one(`SELECT phone FROM clients WHERE id=${x03}`) === '03 555 2222', 'undo overwrote a newer change');
+    const r = await P.request.post(BASE + 'undo.php', { form: { csrf: 'x', event: '1' }, maxRedirects: 0 });
+    assert(r.status() === 403, 'bad token status ' + r.status());
+  });
+  await test('N11', 'Work Log edit: hours + minutes only; stored seconds kept unless the time is changed', async () => {
+    sql(`INSERT INTO work_log (source_system,source_id,details,work_date,duration_seconds,billable_seconds,billability) VALUES ('m5','n11-${Date.now()}','Test N11 entry','${todayNZ}',3725,0,'review')`);
+    const w = num('SELECT MAX(id) FROM work_log');
+    await go(P, 'edit-work.php?id=' + w);
+    assert(await P.locator('#seconds').count() === 0 && await P.inputValue('#hours') === '1' && await P.inputValue('#minutes') === '2', 'fields');
+    await P.fill('#details', 'Test N11 entry edited'); await save(P);
+    assert(num(`SELECT duration_seconds FROM work_log WHERE id=${w}`) === 3725, 'seconds lost on unrelated edit');
+    await go(P, 'edit-work.php?id=' + w); await P.fill('#minutes', '3'); await save(P);
+    assert(num(`SELECT duration_seconds FROM work_log WHERE id=${w}`) === 3780, 'new time not whole minutes');
+  });
+  await test('N12', 'Every form has a Cancel link back to where it came from', async () => {
+    const wid = num(`SELECT MAX(id) FROM work_log WHERE source_system='m5'`);
+    const cases = [['add-work.php?task_id=' + S.openTask.id, 'page=task&id=' + S.openTask.id], ['add-enquiry.php?client_id=' + S.client.id, 'page=client&id=' + S.client.id],
+      ['edit-client.php?id=' + S.client.id, 'page=client&id=' + S.client.id], ['edit-contact.php?id=' + S.contactId, 'page=client&id='], ['edit-task.php?id=' + S.openTask.id, 'page=task&id=' + S.openTask.id],
+      ['edit-work.php?id=' + wid, 'page=work'], ['edit-enquiry.php?id=' + n01, 'convert-enquiry.php?id=' + n01], ['edit-client.php', 'page=clients']];
+    const bad = [];
+    for (const [u, want] of cases) { await go(P, u); const href = await P.getAttribute('a.cancel', 'href').catch(() => null); if (!href || !href.includes(want)) bad.push(`${u} → ${href}`); }
+    assert(!bad.length, bad.join('; '));
   });
 
   /* ================= Today correctness ================= */

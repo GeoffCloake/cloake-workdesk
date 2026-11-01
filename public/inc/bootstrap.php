@@ -113,7 +113,11 @@ function cm_closed_status_sql(string $col): string
 {
     return "LOWER(TRIM(COALESCE($col,''))) IN ('" . implode("','", CM_CLOSED_TASK_STATUSES) . "')";
 }
-function cm_status_label(?string $s): string { $s = trim((string)$s); return $s === '' ? '—' : ucfirst(str_replace('_', ' ', $s)); }
+function cm_status_label(?string $s): string { $s = trim((string)$s); if ($s === 'enquiry') return 'New'; return $s === '' ? '—' : ucfirst(str_replace('_', ' ', $s)); }
+
+/** Enquiry statuses (v0.11). 'enquiry' is the stored value for New. Open = still being worked on. */
+const CM_ENQUIRY_STATUSES = ['enquiry' => 'New', 'quoted' => 'Quoted', 'waiting' => 'Waiting', 'accepted' => 'Accepted', 'task_created' => 'Task created', 'declined' => 'Declined', 'withdrawn' => 'Withdrawn', 'duplicate' => 'Duplicate'];
+const CM_ENQUIRY_OPEN = ['enquiry', 'quoted', 'waiting', 'accepted'];
 
 /* ---------- edit-page helpers (unchanged behaviour from m7-bootstrap.php) ---------- */
 

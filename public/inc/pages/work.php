@@ -14,7 +14,7 @@ $keep = fn(array $over) => route('work', array_filter(array_merge($base, $over),
 $exportQ = http_build_query(array_filter(array_merge(['type' => 'work'], $base), 'strlen'));
 $backHere = $keep([]);
 ?>
-<?php if (($_GET['saved'] ?? null) === '1'): ?><div class="success" role="status">Work Log entry saved.</div><?php elseif (($_GET['saved'] ?? null) === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
+<?php if (($_GET['saved'] ?? null) === '1' && !cm_undo_pending()): ?><div class="success" role="status">Work Log entry saved.</div><?php elseif (($_GET['saved'] ?? null) === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
 <p><a class="button-link" href="add-work.php"><span aria-hidden="true">＋</span> Log work</a></p>
 <form class="filters" method="get" action="index.php" role="search">
   <input type="hidden" name="page" value="work"><input type="hidden" name="filter" value="<?=h($f['filter'] === 'all' ? '' : $f['filter'])?>"><?php if ($f['client'] !== ''): ?><input type="hidden" name="client" value="<?=h($f['client'])?>"><?php endif; ?>

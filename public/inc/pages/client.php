@@ -59,7 +59,7 @@ $physical = $addr(['physical_address_1', 'physical_address_2', 'physical_city_to
 $postal = $addr(['postal_address_1', 'postal_address_2', 'postal_address_3', 'postal_city_town', 'postal_region', 'postal_code', 'postal_country']);
 $savedFlag = $_GET['saved'] ?? null;
 ?>
-<?php if ($savedFlag === '1'): ?><div class="success" role="status">Saved.</div><?php elseif ($savedFlag === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
+<?php if ($savedFlag === '1' && !cm_undo_pending()): ?><div class="success" role="status">Saved.</div><?php elseif ($savedFlag === '0'): ?><div class="success" role="status">No changes to save.</div><?php endif; ?>
 <?php if (!$migrated): ?><div class="notice"><strong>Database update pending.</strong> Client details can't be edited until migration 001 is applied (see More ▸ Release check).</div><?php endif; ?>
 <header class="client-head" data-recent-client="<?=(int)$id?>" data-name="<?=h($c['name'])?>">
   <div class="head-row"><h1><?=h($c['name'])?></h1><?php if ($migrated): ?><a class="edit-link" href="edit-client.php?id=<?=(int)$id?>">Edit</a><?php endif; ?></div>

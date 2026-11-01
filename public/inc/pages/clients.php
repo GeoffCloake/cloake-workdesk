@@ -12,7 +12,7 @@ $sql .= ' LIMIT 400';
 $rows = allRows($pdo, $sql, $args);
 $clean = fn($v) => ($v === null || $v === 'null') ? '' : trim((string)$v);
 ?>
-<?php if (($_GET['saved'] ?? null) === '1'): ?><div class="success" role="status">Saved.</div><?php endif; ?>
+<?php if (($_GET['saved'] ?? null) === '1' && !cm_undo_pending()): ?><div class="success" role="status">Saved.</div><?php endif; ?>
 <p><a class="button-link" href="edit-client.php"><span aria-hidden="true">＋</span> New client</a></p>
 <section class="finder-panel">
   <form class="finder" method="get" action="index.php" role="search" data-finder>

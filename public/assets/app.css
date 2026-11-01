@@ -277,3 +277,23 @@ legend.sub{font-size:14px;font-weight:680;text-transform:none;letter-spacing:0;c
 .tag-hot{color:#8a2a14;background:#fbe3dc}
 .task-facts{background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 12px;margin:10px 0}
 .task-facts:empty{display:none}
+
+/* ---------- v0.11: form actions, cancel, undo, sign-off, closed records ---------- */
+.form-actions{display:flex;align-items:center;gap:10px;margin:16px 0 6px}
+.form-actions .save{flex:1;margin:0}
+.form-actions .cancel{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 18px;border:1px solid var(--line-2);border-radius:11px;background:#fff;color:var(--ink-2);font-weight:650;text-decoration:none}
+button.danger{background:#fff;color:var(--late);border:1.5px solid var(--late)}
+.form-actions button.danger,.form-actions button.secondary{min-height:48px}
+/* tick/radio rows in panels: the existing pill style, full width so long labels wrap neatly */
+.danger-zone label.check{display:flex;width:100%;margin:6px 0;padding:10px 12px;line-height:1.35}
+.danger-zone label.check input{flex:none}
+.danger-zone{border-color:#ead3c9}
+.delete-form{border-top:1px solid var(--line);margin-top:14px;padding-top:6px}
+.record.is-closed{opacity:.62}
+.undo-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#edf6ef;border:1px solid #b9dcc5;padding:8px 8px 8px 14px;border-radius:12px;margin:10px 0;font-size:14px;line-height:1.4}
+.undo-bar span{min-width:0;overflow-wrap:anywhere}
+.undo-bar form{margin:0;flex:none}
+.undo-bar button{min-height:38px;padding:0 14px;font-size:14px;background:#fff;color:var(--accent);border:1.5px solid var(--accent)}
+.signoff{border-color:#b9dcc5}
+.signoff-done{background:#edf6ef}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:10px}

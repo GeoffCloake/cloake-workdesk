@@ -20,12 +20,33 @@ function cm_changes(array $old, array $new): array
     return $c;
 }
 
+/** Updates that can be undone (v0.11): event kind => table. The payload holds {field:{previous,current}}. */
+const CM_UNDOABLE = ['client_updated' => 'clients', 'contact_updated' => 'contacts', 'task_updated' => 'tasks', 'work_log_updated' => 'work_log', 'enquiry_updated' => 'enquiries'];
+/** How long after saving the Undo link stays usable (seconds). */
+const CM_UNDO_WINDOW = 1800;
+
 /** Write one audit event. $ids: client_id, enquiry_id, task_id, work_log_id (any subset). */
 function cm_audit(PDO $pdo, string $kind, array $ids, string $summary, ?array $payload = null): void
 {
     $s = $pdo->prepare('INSERT INTO activity_events (client_id,enquiry_id,task_id,work_log_id,event_kind,event_at,summary,payload) VALUES (?,?,?,?,?,NOW(),?,?)');
     $s->execute([$ids['client_id'] ?? null, $ids['enquiry_id'] ?? null, $ids['task_id'] ?? null, $ids['work_log_id'] ?? null, $kind, mb_substr($summary, 0, 1000),
         $payload === null ? null : json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)]);
+    // Offer Undo for the most recent update made in this session (shown once on the next page).
+    if (isset(CM_UNDOABLE[$kind]) && $payload && session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION['cm_undo'] = ['id' => (int)$pdo->lastInsertId(), 'at' => time(), 'show' => true, 'summary' => mb_substr($summary, 0, 160)];
+    }
+}
+
+/** Same value for undo purposes: text normalised like cm_changes; numbers numerically; a date matches its datetime. */
+function cm_same($a, $b): bool
+{
+    $n = fn($x) => trim(str_replace("\r\n", "\n", (string)($x ?? '')));
+    $x = $n($a); $y = $n($b);
+    if ($x === $y) return true;
+    if ($x !== '' && $y !== '' && is_numeric($x) && is_numeric($y)) return (float)$x === (float)$y;
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $y) && str_starts_with($x, $y . ' 00:00:00')) return true;
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $x) && str_starts_with($y, $x . ' 00:00:00')) return true;
+    return false;
 }
 
 /**
