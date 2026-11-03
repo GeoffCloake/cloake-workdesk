@@ -3,8 +3,24 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.16.0 · build 20261103.5 — 3 November 2026
+**Status: built and tested locally.** Tested: 119/119 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.15.0 with `cm-update` by **both database routes** (installer applies 007 / phpMyAdmin SQL first); v0.15.0's own suite 113/113 after going back with `cm-update v0.15.0`. **Includes database migration 007** (add-only, reversible).
+Domain register and provisioning (ready for a later Vetta portal sync).
+
+### Added — Domains (More… › Billing › Domains)
+- Every domain with its client, expiry (amber within 60 days, red when expired), registrar, DNS host, auto-renew and how it's billed: its own price, **in <hosting>**, no charge, or internal.
+- Filters: **Expiring within 60 days**, **Expired**, **Billed, never invoiced** (billed on its own but no invoice on record — your 27 extra domains are here), **No charge, not linked**, **Included in hosting**; registrar; live/ended; search.
+
+### Added — on each service
+- New fields (Edit service › Domain & server): **DNS host**, **name servers**, **auto-renew** (yes / no / not known), **provider reference** (registrar / Vetta portal ID — never a transfer code), and for a domain **Included in hosting**.
+- **Include in a hosting service** (on a domain's page): the domain is then not invoiced on its own (taken off Pending Invoicing; recording it is refused) and is listed as **Additional Domains: …** on that hosting's Xero description. The hosting's page lists its included domains. Audited; Undo works. Only a hosting service of the same client can be chosen.
+- **Set-up task**: "Start set-up task" makes a task for the client from the new **Set up hosting + domain** template (checklist: register/transfer, DNS, cPanel, email, SSL, live, billing), titled "Set up: <domain>", linked both ways (the task shows "Sets up"). Edit the template's checklist like any other template.
+
+### Database — migration 007 (add-only)
+- services: nameservers, dns_host, auto_renew, included_in_service_id, provider_ref, provision_task_id. One task template seeded. Nothing existing changed. (A separate "registrar status" column was not needed — the service Status already has Active / Expired / Transferred away.)
+
 ## v0.15.0 · build 20261103.4 — 3 November 2026
-**Status: deployed to manager-dev 3 Nov 2026 22:05 with `cm-update v0.15.0` (first install from GitHub; backup, swap and verify OK). Browser check by Geoff pending.** Tested: 113/113 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.14.0 through `cm-update` (git route). **No database change.** Rollback target: v0.14.0.
+**Status: deployed to manager-dev 3 Nov 2026 22:05 with `cm-update v0.15.0` (first install from GitHub) and user-confirmed ("looks good", 22:14). Rollback target for v0.16.0.** Tested: 113/113 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.14.0 through `cm-update` (git route). **No database change.** Rollback target: v0.14.0.
 Simpler screens (your request: "minimal for basic things… step back higher level functions") and the new name.
 
 ### Changed — the app is now **Cloake Workdesk**
