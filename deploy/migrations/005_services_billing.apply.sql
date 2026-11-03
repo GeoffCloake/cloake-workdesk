@@ -37,6 +37,6 @@ ALTER TABLE `work_log` ADD COLUMN `charge_id` BIGINT UNSIGNED NULL;
 INSERT INTO settings (k,v,updated_at,updated_by) VALUES
  ('lead_weeks','8',NOW(),'migration'),('gst_rate','0.15',NOW(),'migration'),('invoice_due','period_start',NOW(),'migration'),
  ('xero_account_hosting','43504',NOW(),'migration'),('xero_account_domain','43601',NOW(),'migration'),('xero_account_default','',NOW(),'migration'),
- ('billing_day','month_end',NOW(),'migration'),('hourly_rate_ex_gst','',NOW(),'migration')
+ ('billing_day','month_end',NOW(),'migration'),('hourly_rate_ex_gst','',NOW(),'migration'),('charges_from',CURDATE(),NOW(),'migration')
  ON DUPLICATE KEY UPDATE k=k;
 INSERT INTO schema_migrations (id,description,applied_at,applied_by) VALUES ('005_services_billing','Services register, charges ledger, billing settings, WHMCS archive; work_log.charge_id',NOW(),'phpMyAdmin');

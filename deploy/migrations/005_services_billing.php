@@ -58,10 +58,10 @@ return [
         "INSERT INTO settings (k,v,updated_at,updated_by) VALUES
  ('lead_weeks','8',NOW(),'migration'),('gst_rate','0.15',NOW(),'migration'),('invoice_due','period_start',NOW(),'migration'),
  ('xero_account_hosting','43504',NOW(),'migration'),('xero_account_domain','43601',NOW(),'migration'),('xero_account_default','',NOW(),'migration'),
- ('billing_day','month_end',NOW(),'migration'),('hourly_rate_ex_gst','',NOW(),'migration')
+ ('billing_day','month_end',NOW(),'migration'),('hourly_rate_ex_gst','',NOW(),'migration'),('charges_from',CURDATE(),NOW(),'migration')
  ON DUPLICATE KEY UPDATE k=k",
     ],
     'verify_sql' => [
-        'settings missing' => "SELECT 8 - COUNT(*) FROM settings WHERE k IN ('lead_weeks','gst_rate','invoice_due','xero_account_hosting','xero_account_domain','xero_account_default','billing_day','hourly_rate_ex_gst')",
+        'settings missing' => "SELECT 9 - COUNT(*) FROM settings WHERE k IN ('lead_weeks','gst_rate','invoice_due','xero_account_hosting','xero_account_domain','xero_account_default','billing_day','hourly_rate_ex_gst','charges_from')",
     ],
 ];

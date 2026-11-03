@@ -331,3 +331,19 @@ button.danger{background:#fff;color:var(--late);border:1.5px solid var(--late)}
 .stage-of{margin:0 0 4px;font-size:13px;font-weight:650;color:var(--muted)}
 .plan-list li.is-done{opacity:.7}
 .template-from .row-inline{justify-content:space-between}
+
+/* ---------- v0.13 services & Pending Invoicing ---------- */
+.invoice-lines{list-style:none;margin:6px 0 4px;padding:0}
+.invoice-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 10px;align-items:start;padding:10px 0;border-top:1px solid #edf0ec}
+.invoice-line:first-child{border-top:0}
+.invoice-line.is-late .queue-kind{color:var(--late)}
+.il-check{display:flex;align-items:center;justify-content:center;min-width:32px;min-height:32px}
+.il-check input{width:22px;height:22px}
+.il-main{min-width:0}
+.il-desc{font-size:13.5px;margin:3px 0 4px;max-height:7.5em;overflow:auto;background:#f7f8f5;border-radius:8px;padding:6px 8px}
+.il-main .mini{margin-top:6px}
+.il-amt{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-variant-numeric:tabular-nums;max-width:120px}
+.il-amt input{width:100px;text-align:right;min-height:40px;padding:6px 8px}
+.il-amt small{font-size:12px;color:var(--muted)}
+.invoice-client .panel-title small{font-weight:400;font-size:12.5px}
+.raw-record dd{font-size:13px}

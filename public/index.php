@@ -42,7 +42,7 @@ $pages = [
     'tasks' => ['Tasks', 'tasks'], 'task' => ['Task', 'tasks'], 'work' => ['Work Log', 'work'],
     'enquiries' => ['Enquiries', 'enquiries'], 'invoicing' => ['Pending Invoicing', 'invoicing'],
     'items' => ['Account Items', 'items'], 'more' => ['More', 'more'], 'check' => ['Release check', 'check'],
-    'templates' => ['Task templates', 'templates'],
+    'templates' => ['Task templates', 'templates'], 'services' => ['Services', 'services'], 'service' => ['Service', 'services'],
 ];
 $page = (string)($_GET['page'] ?? 'today');
 if (!isset($pages[$page])) $page = 'today';

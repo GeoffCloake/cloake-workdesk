@@ -379,6 +379,16 @@
     }
   }
 
+  /* ---------------- v0.13: copy a Xero description ---------------- */
+  $$('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var src = document.getElementById(b.getAttribute('data-copy')); if (!src) return;
+      var t = src.textContent, done = function () { var o = b.textContent; b.textContent = 'Copied'; setTimeout(function () { b.textContent = o; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function () { });
+      else { var r = document.createRange(); r.selectNodeContents(src); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); try { document.execCommand('copy'); done(); } catch (e) { } }
+    });
+  });
+
   /* ---------------- list filters apply as soon as they change ---------------- */
   $$('[data-autosubmit]').forEach(function (c) { c.addEventListener('change', function () { if (c.form) c.form.submit(); }); });
 

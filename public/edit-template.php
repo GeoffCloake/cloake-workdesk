@@ -14,7 +14,7 @@ $pdo = cm_pdo();
 $id = m7id();
 $FIELDS = ['title', 'instructions', 'task_category', 'task_type', 'assigned_to', 'pricing', 'chargeable', 'estimate_minutes'];
 $error = '';
-$t = $id ? oneRow($pdo, 'SELECT * FROM task_templates WHERE id=?', [$id]) : array_fill_keys(array_merge($FIELDS, ['billing_mode']), null) + ['active' => 1, 'from_task_id' => null, 'chargeable' => 'yes', 'pricing' => 'set'];
+$t = $id ? oneRow($pdo, 'SELECT * FROM task_templates WHERE id=?', [$id]) : array_merge(array_fill_keys(array_merge($FIELDS, ['billing_mode']), null), ['active' => 1, 'from_task_id' => null, 'chargeable' => 'yes', 'pricing' => 'set']);
 if ($id && !$t) { http_response_code(404); exit('Template not found.'); }
 $classes = cm_task_classes($pdo);
 

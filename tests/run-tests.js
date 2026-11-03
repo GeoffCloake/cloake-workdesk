@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=services', 'service-edit.php', 'claims.php', 'billing-settings.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -1033,7 +1033,7 @@ function protectedChecksums() {
     assert((await row()).includes(want) && /Planned/.test(await row()), `row "${await row()}" want ${want}`);
     await go(P, 'edit-enquiry.php?id=' + q03enq); await P.selectOption('#status', 'accepted'); await save(P);
     await go(P, 'convert-enquiry.php?id=' + q03enq); assert(/Ready to invoice/.test(await row()), 'not ready after accepted: ' + await row());
-    await go(P, 'index.php?page=invoicing'); assert((await P.locator('[data-testid=ready-milestones]').innerText()).includes('Test Q06 deposit'), 'not on Pending Invoicing');
+    await go(P, 'index.php?page=invoicing'); assert((await P.locator('main').innerText()).includes('Test Q06 deposit'), 'not on Pending Invoicing');
     await go(P, 'edit-enquiry.php?id=' + q03enq); await P.selectOption('#status', 'waiting'); await save(P);
     await go(P, 'convert-enquiry.php?id=' + q03enq); assert(/Planned/.test(await row()), 'still ready after set back');
     await go(P, 'edit-enquiry.php?id=' + q03enq); await P.selectOption('#status', 'accepted'); await save(P);
@@ -1173,6 +1173,154 @@ function protectedChecksums() {
     await openDetails(P, 'Add price line'); await P.fill('#ntask-desc', 'Test Q16 line on imported task'); await P.fill('#ntask-price', '10'); await clickIn(P, 'form:has(#ntask-desc) button[type=submit]');
     await openDetails(P, 'Break out into stages'); await P.fill('#stage0', 'Test Q16 stage'); await clickIn(P, '[data-testid=stages] button[type=submit]');
     assert(num(`SELECT COUNT(*) FROM breakdown_items WHERE task_id=${t}`) >= 1 && num(`SELECT COUNT(*) FROM tasks WHERE parent_task_id=${t}`) === 1, 'not added');
+  });
+  /* ================= v0.13: services, WHMCS import, Pending Invoicing, claims ================= */
+  const WH = path.join(OUT, 'whmcs-fixture');
+  const php = (...a) => { try { return { ok: true, out: execFileSync('php', [path.join(__dirname, '../deploy/import-whmcs.php'), ...a], { encoding: 'utf8', env: { ...process.env } }) }; } catch (e) { return { ok: false, out: String(e.stdout || '') + String(e.stderr || '') }; } };
+  const addMonths = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + n, 1)); const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate(); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`; };
+  let batch = 0;
+  await test('R01', 'WHMCS import: dry run changes nothing; apply archives every row (no Password column, login-like note lines removed), creates live services and Xero history; same files again do nothing', async () => {
+    execFileSync('php', [path.join(__dirname, 'fixture/make_whmcs.php'), WH]);
+    const n0 = sql('SELECT (SELECT COUNT(*) FROM services),(SELECT COUNT(*) FROM archive_whmcs),(SELECT COUNT(*) FROM charges),(SELECT COUNT(*) FROM clients)')[0].join();
+    const dr = php('dry-run', '--dir', WH); assert(dr.ok && /Dry run complete/.test(dr.out), dr.out.slice(0, 300));
+    assert(sql('SELECT (SELECT COUNT(*) FROM services),(SELECT COUNT(*) FROM archive_whmcs),(SELECT COUNT(*) FROM charges),(SELECT COUNT(*) FROM clients)')[0].join() === n0, 'dry run changed data');
+    const r = php('apply', '--dir', WH, '--by', 'Test R01'); assert(r.ok, r.out.slice(0, 400));
+    batch = +(/batch (\d+)/.exec(r.out) || [])[1];
+    assert(num('SELECT COUNT(*) FROM archive_whmcs') === 14, 'archive rows ' + num('SELECT COUNT(*) FROM archive_whmcs'));
+    assert(num(`SELECT COUNT(*) FROM archive_whmcs WHERE CAST(source_record AS CHAR) LIKE '%hunter2%' OR CAST(source_record AS CHAR) LIKE '%p4ss%' OR CAST(source_record AS CHAR) LIKE '%letmein%' OR JSON_CONTAINS_PATH(source_record,'one','$.Password')`) === 0, 'a password reached the archive');
+    assert(one(`SELECT REPLACE(JSON_UNQUOTE(JSON_EXTRACT(source_record,'$.Notes')),'\n',' ') FROM archive_whmcs WHERE source_table='services' AND source_id='1'`).includes('Renewal by email'), 'ordinary note lines lost');
+    assert(num(`SELECT COUNT(*) FROM services WHERE source_system='whmcs'`) === 6 && num(`SELECT COUNT(*) FROM services WHERE source_id='S6'`) === 0, 'services (skipped client imported?)');
+    assert(one(`SELECT CONCAT(client_id,'|',kind,'|',price_ex_gst,'|',cycle_months,'|',cpanel_username) FROM services WHERE source_id='S1'`) === '2|hosting|201.00|6|harbourv', 'S1 fields');
+    assert(one(`SELECT CONCAT(is_internal,'|',billable) FROM services WHERE source_id='S5'`) === '1|0', 'internal');
+    assert(one(`SELECT name FROM clients c JOIN services s ON s.client_id=c.id WHERE s.source_id='S7'`) === 'Fictional New Client Ltd', 'new client');
+    assert(num(`SELECT COUNT(*) FROM charges WHERE origin='xero_import' AND status='invoiced'`) === 2, 'Xero history');
+    assert(/already imported/.test(php('apply', '--dir', WH, '--by', 'Test R01').out), 'second import not refused');
+    await go(P, 'index.php?page=check'); assert(!(await P.$$eval('.checklist li.bad', l => l.length)), 'release check failed');
+  });
+  await test('R02', 'Services list and client page: live services with next period; ended and archived-only WHMCS items under "Former services"; filters match the database', async () => {
+    await go(P, 'index.php?page=services');
+    const shown = await P.locator('[data-testid=services-list] a.record').count();
+    assert(shown === num(`SELECT COUNT(*) FROM services WHERE status IN ('active','pending','suspended')`), 'live count ' + shown);
+    await go(P, 'index.php?page=services&check=look'); assert(await P.locator('[data-testid=services-list] a.record').count() === num(`SELECT COUNT(*) FROM services WHERE check_status IS NOT NULL AND check_status NOT IN ('','agrees') AND status IN ('active','pending','suspended')`), 'check filter');
+    await go(P, 'index.php?page=client&id=3'); const t = await P.locator('[data-testid=client-services]').innerText();
+    assert(t.includes('kowhaiphysio.example.nz'), 'live service missing'); await openDetails(P, 'Former services');
+    assert((await P.locator('[data-testid=former-services]').innerText()).includes('oldkowhai.example.nz'), 'former WHMCS items missing');
+    const sid = one(`SELECT id FROM services WHERE source_id='S1'`); await go(P, 'index.php?page=service&id=' + sid);
+    assert((await P.locator('[data-testid=service-charges]').innerText()).includes('CC-9001'), 'Xero history not on service');
+    assert(!(await P.locator('main').innerText()).includes('hunter2'), 'password shown');
+  });
+  const money = n => '$' + Number(n).toLocaleString('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  await test('R03', 'Pending Invoicing: renewals due within 8 weeks (and overdue) grouped by client, Xero description pattern, account, ex and incl GST', async () => {
+    await go(P, 'index.php?page=invoicing');
+    const lead = new Date(Date.now() + 56 * 86400000); const hor = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(lead);
+    const due = num(`SELECT COUNT(*) FROM services WHERE status IN ('active','pending','suspended') AND billable=1 AND is_internal=0 AND price_ex_gst>0 AND cycle_months>0 AND next_period_start<='${hor}'`);
+    assert(await P.locator('input[name="keys[]"][value^="svc:"]').count() === due, 'due renewals ' + due);
+    const card = P.locator('[data-testid=invoice-client]', { hasText: 'harbourviewmotel.example.nz' });
+    const txt = await card.innerText();
+    const s1 = one(`SELECT next_period_start FROM services WHERE source_id='S1'`);
+    const dmy = iso => iso.split('-').reverse().join('/');
+    assert(txt.includes(`WEBSITE HOSTING - Standard - CMS with PHP 7 - harbourviewmotel.example.nz (${dmy(s1)} -`) && txt.includes('Billing Period: 6 Months'), 'hosting description: ' + txt.slice(0, 300));
+    assert(txt.includes('Domain Renewal - harbourviewmotel.example.nz - 1 Year/s') && txt.includes('Email Only - harbourviewmotel.example.nz'), 'domain/email descriptions');
+    assert(/overdue/i.test(txt) && txt.includes('Account 43504') && txt.includes('Account 43601') && txt.includes(money(201 * 1.15)), 'overdue / accounts / incl GST');
+    assert(!(await P.locator('main').innerText()).includes('cloake.example.nz'), 'internal service listed');
+  });
+  await test('R04', 'Record one Xero invoice for two ticked lines: charges with the number and who; each service moves on one cycle; Undo puts everything back', async () => {
+    const s1 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S1'`)[0], s2 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S2'`)[0];
+    await go(P, 'index.php?page=invoicing');
+    const card = P.locator('[data-testid=invoice-client]', { hasText: 'harbourviewmotel.example.nz' });
+    for (const cb of await card.locator('input[name="keys[]"]').all()) { const v = await cb.getAttribute('value'); if (v !== `svc:${s1[0]}:${s1[1]}` && v !== `svc:${s2[0]}:${s2[1]}`) await cb.uncheck(); }
+    await card.locator('input[name=invoice_number]').fill('INV-T0401'); await card.locator('input[name=recorded_by]').fill('Cathy');
+    await Promise.all([P.waitForNavigation(), card.locator('button[type=submit]').click()]);
+    const g = sql(`SELECT source_id,period_start,amount_ex_gst,recorded_by,xero_invoice_number FROM charges WHERE xero_invoice_number='INV-T0401' ORDER BY source_id`);
+    assert(g.length === 2 && g.every(r => r[3] === 'Cathy') && g.some(r => r[1] === s1[1] && r[2] === '201.00'), 'charges ' + JSON.stringify(g));
+    assert(one(`SELECT next_period_start FROM services WHERE id=${s1[0]}`) === addMonths(s1[1], 6) && one(`SELECT next_period_start FROM services WHERE id=${s2[0]}`) === addMonths(s2[1], 12), 'not moved on');
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='invoice_recorded'`) === 1, 'audit');
+    await undoClick(P);
+    assert(num(`SELECT COUNT(*) FROM charges WHERE xero_invoice_number='INV-T0401'`) === 0 && one(`SELECT next_period_start FROM services WHERE id=${s1[0]}`) === s1[1], 'undo');
+  });
+  await test('R05', 'Recording is refused (nothing saved) for lines of two clients, an already-recorded period, or no invoice number / name', async () => {
+    await go(P, 'index.php?page=invoicing'); const csrf = await P.locator('input[name=csrf]').first().inputValue();
+    const a = sql(`SELECT id,next_period_start FROM services WHERE source_id='S1'`)[0], b = sql(`SELECT id,next_period_start FROM services WHERE source_id='S7'`)[0];
+    const n0 = num('SELECT COUNT(*) FROM charges');
+    const post = async form => { const u = new URLSearchParams(); u.append('csrf', csrf); for (const [k, v] of Object.entries(form)) for (const x of [].concat(v)) u.append(k, x);
+      await P.request.post(BASE + 'invoice-record.php', { data: u.toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, maxRedirects: 0 }); await go(P, 'index.php?page=invoicing'); return (await P.locator('.alert').count()) ? await P.locator('.alert').first().innerText() : ''; };
+    assert(/different clients/.test(await post({ 'keys[]': [`svc:${a[0]}:${a[1]}`, `svc:${b[0]}:${b[1]}`], invoice_number: 'INV-T05', recorded_by: 'Cathy' })), 'two clients accepted');
+    assert(/invoice number/.test(await post({ 'keys[]': `svc:${a[0]}:${a[1]}`, invoice_number: '', recorded_by: 'Cathy' })), 'no number accepted');
+    assert(/already been recorded/.test(await post({ 'keys[]': `svc:${a[0]}:2000-01-01`, invoice_number: 'INV-T05', recorded_by: 'Cathy' })), 'stale period accepted');
+    assert(num('SELECT COUNT(*) FROM charges') === n0, 'something was saved');
+  });
+  await test('R06', 'Correct the next period date: needs a reason; saved and audited with the reason; Undo restores it', async () => {
+    const s = sql(`SELECT id,next_period_start FROM services WHERE source_id='S3'`)[0];
+    await go(P, 'index.php?page=service&id=' + s[0]); const csrf = await P.locator('input[name=csrf]').first().inputValue();
+    await P.request.post(BASE + 'service-edit.php', { form: { csrf, id: s[0], action: 'correct_date', next_period_start: '2030-01-01', reason: '' }, maxRedirects: 0 });
+    assert(one(`SELECT next_period_start FROM services WHERE id=${s[0]}`) === s[1], 'changed without a reason');
+    await go(P, 'index.php?page=service&id=' + s[0]); await openDetails(P, 'Correct the next period'); await P.fill('#np', '2030-01-01'); await P.fill('#why', 'Test R06 Xero shows a later period');
+    await Promise.all([P.waitForNavigation(), P.click('form:has(#why) button')]);
+    assert(one(`SELECT next_period_start FROM services WHERE id=${s[0]}`) === '2030-01-01' && num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='service_updated' AND summary LIKE '%Test R06%'`) === 1, 'not saved/audited');
+    await undoClick(P); assert(one(`SELECT next_period_start FROM services WHERE id=${s[0]}`) === s[1], 'undo');
+  });
+  await test('R07', 'New service: a billed service needs a price and cycle; once added it shows on the client and (when due) on Pending Invoicing', async () => {
+    await go(P, 'service-edit.php?client_id=' + S.client.id); await P.fill('#domain', 'test-r07.example.nz'); await P.selectOption('#cycle_months', '12'); await P.fill('#next_period_start', todayNZ); await save(P);
+    assert(/needs a price/.test(await P.locator('.alert').innerText()) && num(`SELECT COUNT(*) FROM services WHERE domain='test-r07.example.nz'`) === 0, 'saved without a price');
+    await P.fill('#price_ex_gst', '120'); await save(P);
+    assert(num(`SELECT COUNT(*) FROM services WHERE domain='test-r07.example.nz' AND source_system='app' AND price_ex_gst=120`) === 1, 'not saved');
+    await go(P, 'index.php?page=invoicing'); assert((await P.locator('main').innerText()).includes('test-r07.example.nz'), 'not on Pending Invoicing');
+  });
+  await test('R08', 'A ready milestone and a completed on-completion task (with an amount override) appear on Pending Invoicing; recording them charges each once and ties the task\'s hours', async () => {
+    const cid = S.otherClient;
+    sql(`INSERT INTO tasks (client_id,source_system,source_id,title,status,received_at,completed_at,signed_off_at,signed_off_by) VALUES (${cid},'app','test-r08','Test R08 finished job','completed',NOW(),NOW(),NOW(),'Geoff')`); const tid = num('SELECT MAX(id) FROM tasks');
+    sql(`INSERT INTO breakdown_items (task_id,description,quantity,unit_price_ex_gst,pricing_mode,status,line_order,created_at) VALUES (${tid},'Test R08 work',1,250,'set','proposed',1,NOW())`);
+    sql(`INSERT INTO work_log (client_id,task_id,source_system,source_id,details,work_date,duration_seconds,billable_seconds,billability) VALUES (${cid},${tid},'app','test-r08w','Test R08 hours','${todayNZ}',3600,3600,'billable')`);
+    sql(`INSERT INTO tasks (client_id,source_system,source_id,title,status,received_at,billing_mode) VALUES (${cid},'app','test-r08m','Test R08 staged job','open',NOW(),'milestones')`); const mt = num('SELECT MAX(id) FROM tasks');
+    sql(`INSERT INTO billing_milestones (task_id,label,amount_ex_gst,trigger_kind,status,marked_ready_at,marked_ready_by,created_at) VALUES (${mt},'Test R08 stage 1',400,'manual','planned',NOW(),'Geoff',NOW())`); const msid = num('SELECT MAX(id) FROM billing_milestones');
+    await go(P, 'index.php?page=invoicing');
+    const card = P.locator('[data-testid=invoice-client]', { hasText: 'Test R08 finished job' });
+    assert((await card.innerText()).includes('Test R08 stage 1'), 'milestone missing');
+    await card.locator(`input[name="amount[fee:${tid}]"]`).fill('275.50');
+    for (const cb of await card.locator('input[name="keys[]"]').all()) { const v = await cb.getAttribute('value'); if (v !== `fee:${tid}` && v !== `ms:${msid}`) await cb.uncheck(); }
+    await card.locator('input[name=invoice_number]').fill('INV-T0801'); await card.locator('input[name=recorded_by]').fill('Cathy');
+    await Promise.all([P.waitForNavigation(), card.locator('button[type=submit]').click()]);
+    assert(one(`SELECT amount_ex_gst FROM charges WHERE source_kind='task_fee' AND source_id=${tid}`) === '275.50' && one(`SELECT amount_ex_gst FROM charges WHERE source_kind='milestone' AND source_id=${msid}`) === '400.00', 'charges');
+    assert(num(`SELECT COUNT(*) FROM work_log WHERE task_id=${tid} AND charge_id IS NOT NULL`) === 1, 'hours not tied');
+    await go(P, 'index.php?page=invoicing'); const t = await P.locator('main').innerText();
+    assert(!t.includes('Test R08 finished job') && !t.includes('Test R08 stage 1'), 'still listed after invoicing');
+  });
+  await test('R09', 'Month-end claims: hours in the month × rate become a pending claim (hours tied), shown on Pending Invoicing; a progress claim over the remaining fee is refused; removing a claim frees its hours', async () => {
+    await go(P, 'billing-settings.php'); await P.fill('#hourly_rate_ex_gst', '80'); await P.fill('#updated_by', 'Geoff'); await save(P);
+    assert(one(`SELECT v FROM settings WHERE k='hourly_rate_ex_gst'`) === '80' && num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='settings_updated'`) >= 1, 'setting');
+    const month = todayNZ.slice(0, 7); const cid = S.otherClient;
+    sql(`INSERT INTO tasks (client_id,source_system,source_id,title,status,received_at,billing_mode) VALUES (${cid},'app','test-r09','Test R09 monthly retainer','in progress',NOW(),'monthly')`); const tid = num('SELECT MAX(id) FROM tasks');
+    sql(`INSERT INTO breakdown_items (task_id,description,quantity,unit_price_ex_gst,pricing_mode,status,line_order,created_at) VALUES (${tid},'Test R09 build',1,1000,'set','proposed',1,NOW())`);
+    sql(`INSERT INTO work_log (client_id,task_id,source_system,source_id,details,work_date,duration_seconds,billable_seconds,billability) VALUES (${cid},${tid},'app','test-r09a','Test R09 a','${todayNZ}',5400,5400,'billable'),(${cid},${tid},'app','test-r09b','Test R09 b','${todayNZ}',1800,1800,'non_billable')`);
+    await go(P, 'claims.php?month=' + month);
+    assert(await P.inputValue(`#h${tid}`) === '120.00', 'hours amount ' + await P.inputValue(`#h${tid}`));
+    await P.fill(`#p${tid}`, '1200'); await P.fill('#created_by', 'Geoff'); await save(P);
+    assert(/more than what is left/.test(await P.locator('.alert').innerText()) && num(`SELECT COUNT(*) FROM charges WHERE source_id=${tid} AND source_kind IN ('claim','progress')`) === 0, 'over-claim accepted');
+    await P.fill(`#p${tid}`, '300'); await save(P);
+    assert(num(`SELECT COUNT(*) FROM charges WHERE source_id=${tid} AND source_kind='claim' AND status='pending' AND amount_ex_gst=120`) === 1 && num(`SELECT COUNT(*) FROM charges WHERE source_id=${tid} AND source_kind='progress' AND amount_ex_gst=300`) === 1, 'claims not created');
+    assert(num(`SELECT COUNT(*) FROM work_log WHERE task_id=${tid} AND charge_id IS NOT NULL`) === 1, 'billable hours not tied (or non-billable tied)');
+    await go(P, 'index.php?page=invoicing'); assert((await P.locator('main').innerText()).includes('Test R09 monthly retainer'), 'claim not on Pending Invoicing');
+    const gid = num(`SELECT id FROM charges WHERE source_id=${tid} AND source_kind='claim'`);
+    await go(P, 'claims.php?month=' + month); await Promise.all([P.waitForNavigation(), P.click(`form:has(input[name=charge_id][value="${gid}"]) button`)]);
+    assert(num(`SELECT COUNT(*) FROM charges WHERE id=${gid}`) === 0 && num(`SELECT COUNT(*) FROM work_log WHERE task_id=${tid} AND charge_id IS NOT NULL`) === 0, 'remove did not free hours');
+  });
+  await test('R10', 'Lead time setting: widening it to 20 weeks adds the later renewal to Pending Invoicing', async () => {
+    await go(P, 'index.php?page=invoicing'); const before = await P.locator('input[name="keys[]"][value^="svc:"]').count();
+    await go(P, 'billing-settings.php'); await P.fill('#lead_weeks', '20'); await P.fill('#updated_by', 'Geoff'); await save(P);
+    await go(P, 'index.php?page=invoicing'); const after = await P.locator('input[name="keys[]"][value^="svc:"]').count();
+    assert(after > before && (await P.locator('main').innerText()).includes('kowhaiphysio.example.nz'), `before ${before} after ${after}`);
+    await go(P, 'billing-settings.php'); await P.fill('#lead_weeks', '8'); await P.fill('#updated_by', 'Geoff'); await save(P);
+  });
+  await test('R11', 'Import undo: refused while an invoice recorded in the manager uses its services; allowed after that invoice is undone; removes services, archive, history and the new client', async () => {
+    const s7 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S7'`)[0];
+    await go(P, 'index.php?page=invoicing'); const card = P.locator('[data-testid=invoice-client]', { hasText: 'newclient.example.nz' });
+    await card.locator('input[name=invoice_number]').fill('INV-T1101'); await card.locator('input[name=recorded_by]').fill('Cathy');
+    await Promise.all([P.waitForNavigation(), card.locator('button[type=submit]').click()]);
+    const r1 = php('undo', '--batch', String(batch), '--confirm'); assert(!r1.ok && /invoices have been recorded/.test(r1.out), 'undo not refused: ' + r1.out.slice(0, 200));
+    await undoClick(P);
+    const r2 = php('undo', '--batch', String(batch), '--confirm'); assert(r2.ok, r2.out.slice(0, 300));
+    assert(num(`SELECT COUNT(*) FROM services WHERE source_system='whmcs'`) === 0 && num('SELECT COUNT(*) FROM archive_whmcs') === 0 && num(`SELECT COUNT(*) FROM charges WHERE origin='xero_import'`) === 0 && num(`SELECT COUNT(*) FROM clients WHERE source_system='whmcs'`) === 0, 'leftovers');
+    const r3 = php('apply', '--dir', WH, '--by', 'Test R11'); assert(r3.ok, 'reimport failed');
   });
   /* ================= Today correctness ================= */
   await test('T01', 'Today: no record-count tiles; queue items are real open/due records; backlog count matches database', async () => {

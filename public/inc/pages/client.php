@@ -23,6 +23,10 @@ $closedCount = oneRow($pdo, "SELECT COUNT(*) n FROM tasks WHERE client_id=? AND 
 $work = allRows($pdo, "SELECT w.id,w.details,w.staff_key,w.work_date,w.started_at,w.duration_seconds,w.billable_seconds,w.billability,w.source_system,w.task_id,t.title task_title
     FROM work_log w LEFT JOIN tasks t ON t.id=w.task_id WHERE w.client_id=? ORDER BY COALESCE(w.work_date,DATE(w.started_at)) DESC, w.id DESC LIMIT 40", [$id]);
 $workStats = oneRow($pdo, "SELECT COUNT(*) n, MAX(COALESCE(work_date,DATE(started_at))) last_at FROM work_log WHERE client_id=?", [$id]);
+$hasServices = (bool)oneRow($pdo, "SELECT 1 x FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='services'");
+$services = $hasServices ? allRows($pdo, "SELECT * FROM services WHERE client_id=? ORDER BY FIELD(status,'active','pending','suspended') DESC, is_internal, (next_period_start IS NULL), next_period_start, domain", [$id]) : [];
+$formerWhmcs = $hasServices ? allRows($pdo, "SELECT a.source_table,a.source_id,a.domain,a.status,a.source_record FROM archive_whmcs a WHERE a.client_id=? AND a.source_table IN ('services','domains')
+    AND NOT EXISTS (SELECT 1 FROM services s WHERE s.source_system='whmcs' AND s.source_id=CONCAT(IF(a.source_table='domains','D','S'),a.source_id)) ORDER BY a.domain", [$id]) : [];
 $enquiries = allRows($pdo, "SELECT e.id,e.title,e.status,e.created_at,e.next_action_due,(SELECT MIN(t.id) FROM tasks t WHERE t.enquiry_id=e.id) task_id FROM enquiries e WHERE e.client_id=? ORDER BY e.id DESC LIMIT 20", [$id]);
 
 // Best phone/email for the top quick actions: client record first, then first active contact.
@@ -112,6 +116,20 @@ $savedFlag = $_GET['saved'] ?? null;
     <?php if ((int)$closedCount['n'] > count($tasksClosed)): ?><a class="small" href="<?=h(route('tasks', ['q' => $c['name'], 'status' => 'closed']))?>">Show all <?=(int)$closedCount['n']?> in Tasks ›</a><?php endif; ?>
   </div></details><?php endif; ?>
 </section>
+
+<?php if ($hasServices): $live = array_filter($services, fn($x) => in_array($x['status'], CM_SERVICE_LIVE, true)); $ended = array_filter($services, fn($x) => !in_array($x['status'], CM_SERVICE_LIVE, true)); ?>
+<section aria-labelledby="sv" data-testid="client-services">
+  <div class="section-heading"><h2 id="sv">Services &amp; domains <small><?=count($live) ?: ''?></small></h2><a href="service-edit.php?client_id=<?=(int)$id?>">＋ Service</a></div>
+  <?php if (!$live): ?><p class="emptyline">No live services recorded for this client.</p><?php else: ?>
+  <div class="stack compact-list"><?php foreach ($live as $sv): $due = $sv['next_period_start'] && $sv['billable'] && !$sv['is_internal']; $late = $due && $sv['next_period_start'] < $today; ?>
+    <a class="record" href="<?=h(route('service', ['id' => $sv['id']]))?>"><span><strong><?=h($sv['domain'] ?: $sv['label'] ?: '—')?></strong><small><?=h(implode(' · ', array_filter([CM_SERVICE_KINDS[$sv['kind']] ?? $sv['kind'], $sv['plan_name'], $sv['status'] !== 'active' ? (CM_SERVICE_STATUSES[$sv['status']] ?? $sv['status']) : '', $sv['is_internal'] ? 'internal' : (!$sv['billable'] ? 'no charge' : ($sv['price_ex_gst'] !== null ? cm_money($sv['price_ex_gst']) . ' ' . strtolower(CM_CYCLES[(string)$sv['cycle_months']] ?? '') : ''))])))?></small></span><span class="end<?=$late ? ' late' : ''?>"><?=$due ? 'Next ' . h(niceDate($sv['next_period_start'])) : ''?> ›</span></a>
+  <?php endforeach; ?></div><?php endif; ?>
+  <?php if ($ended || $formerWhmcs): ?><details data-testid="former-services"><summary>Former services (<?=count($ended) + count($formerWhmcs)?>)</summary><div class="stack compact-list">
+    <?php foreach ($ended as $sv): ?><a class="record is-closed" href="<?=h(route('service', ['id' => $sv['id']]))?>"><span><strong><?=h($sv['domain'] ?: $sv['label'] ?: '—')?></strong><small><?=h((CM_SERVICE_KINDS[$sv['kind']] ?? $sv['kind']) . ' · ' . (CM_SERVICE_STATUSES[$sv['status']] ?? $sv['status']))?></small></span><span class="end">›</span></a><?php endforeach; ?>
+    <?php foreach ($formerWhmcs as $a): $r = json_decode((string)$a['source_record'], true) ?: []; ?><div class="record is-closed"><span><strong><?=h($a['domain'] ?: '—')?></strong><small><?=h(implode(' · ', array_filter([$a['source_table'] === 'domains' ? 'Domain' : 'Service', 'WHMCS ' . ($a['status'] ?: ''), ($r['Recurring Amount'] ?? '') !== '' ? '$' . $r['Recurring Amount'] . ' ' . ($r['Billing Cycle'] ?? ($a['source_table'] === 'domains' ? 'yearly' : '')) : '', !empty($r['Registration Date']) ? 'from ' . niceDate($r['Registration Date']) : '', !empty($r['Termination Date']) && !str_starts_with((string)$r['Termination Date'], '0000') ? 'ended ' . niceDate($r['Termination Date']) : (!empty($r['Expiry Date']) ? 'expiry ' . niceDate($r['Expiry Date']) : '')])))?></small></span><span class="end"><small>WHMCS #<?=h($a['source_id'])?></small></span></div><?php endforeach; ?>
+  </div></details><?php endif; ?>
+</section>
+<?php endif; ?>
 
 <section aria-labelledby="act">
   <h2 id="act">Activity</h2>

@@ -19,7 +19,7 @@ const CM_SERVICE_STATUSES = ['active' => 'Active', 'pending' => 'Pending', 'susp
 const CM_SERVICE_LIVE = ['active', 'pending', 'suspended'];
 const CM_CYCLES = ['' => 'No cycle', '1' => 'Monthly', '3' => 'Quarterly', '6' => 'Six-monthly', '12' => 'Yearly', '24' => 'Two-yearly'];
 const CM_CHECK_STATUSES = ['' => '—', 'agrees' => 'Agrees with Xero', 'xero_ahead' => 'Xero ahead of WHMCS', 'whmcs_ahead' => 'WHMCS ahead (no Xero invoice)', 'no_invoice' => 'No invoice found', 'price_differs' => 'Price differs', 'decide' => 'Needs a decision'];
-const CM_CHARGE_KINDS = ['service' => 'Renewal', 'milestone' => 'Milestone', 'claim' => 'Month-end claim', 'task_fee' => 'Task', 'manual' => 'Manual'];
+const CM_CHARGE_KINDS = ['service' => 'Renewal', 'milestone' => 'Milestone', 'claim' => 'Month-end claim', 'progress' => 'Progress claim', 'task_fee' => 'Task', 'manual' => 'Manual'];
 const CM_SETTINGS = [
     'lead_weeks' => ['Lead time (weeks before a period starts)', '8'],
     'gst_rate' => ['GST rate', '0.15'],
@@ -58,12 +58,13 @@ function cm_service_description(array $s, string $start, string $end): string
 {
     $dom = (string)($s['domain'] ?: $s['label'] ?: '');
     $per = '(' . cm_dmy($start) . ' - ' . cm_dmy($end) . ')';
+    $bp = "\nBilling Period: " . (int)$s['cycle_months'] . ' Month' . ((int)$s['cycle_months'] === 1 ? '' : 's');
     switch ($s['kind']) {
         case 'domain': $yrs = max(1, intdiv((int)($s['cycle_months'] ?: 12), 12)); return "Domain Renewal - $dom - $yrs Year/s $per";
-        case 'email': return "Email Only - $dom $per";
-        case 'dns': return "DNS and Forwarding - $dom $per";
-        case 'maintenance': return 'Website Maintenance - ' . $dom . ' ' . $per;
-        default: return 'WEBSITE HOSTING - ' . ($s['plan_name'] ? $s['plan_name'] . ' - ' : '') . "$dom $per";
+        case 'email': return "Email Only - $dom $per$bp";
+        case 'dns': return "DNS and Forwarding - $dom $per$bp";
+        case 'maintenance': return 'Website Maintenance - ' . $dom . ' ' . $per . $bp;
+        default: return 'WEBSITE HOSTING - ' . ($s['plan_name'] ? $s['plan_name'] . ' - ' : '') . "$dom $per$bp";
     }
 }
 
@@ -128,11 +129,11 @@ function cm_due_items(PDO $pdo, ?string $horizon = null): array
             'amount' => $amount, 'account' => cm_setting($pdo, 'xero_account_default'), 'overdue' => false, 'note' => $how, 'url' => route('task', ['id' => $t['id']]), 'editable_amount' => true];
     }
     // 4. Month-end claims waiting (pending charges)
-    foreach (allRows($pdo, "SELECT g.*, c.name client_name, t.title task_title FROM charges g LEFT JOIN clients c ON c.id=g.client_id LEFT JOIN tasks t ON t.id=g.source_id AND g.source_kind='claim'
+    foreach (allRows($pdo, "SELECT g.*, c.name client_name, t.title task_title FROM charges g LEFT JOIN clients c ON c.id=g.client_id LEFT JOIN tasks t ON t.id=g.source_id AND g.source_kind IN ('claim','progress')
         WHERE g.status='pending' ORDER BY g.period_start, g.id") as $g) {
         $items[] = ['key' => 'chg:' . $g['id'], 'kind' => $g['source_kind'], 'client_id' => $g['client_id'], 'client_name' => $g['client_name'], 'label' => $g['task_title'] ?: $g['description'],
             'description' => (string)$g['description'], 'period_start' => $g['period_start'], 'period_end' => $g['period_end'], 'amount' => (float)$g['amount_ex_gst'],
-            'account' => $g['xero_account'] ?: cm_setting($pdo, 'xero_account_default'), 'overdue' => false, 'note' => 'Month-end claim', 'url' => $g['source_kind'] === 'claim' ? route('task', ['id' => $g['source_id']]) : route('pending')];
+            'account' => $g['xero_account'] ?: cm_setting($pdo, 'xero_account_default'), 'overdue' => false, 'note' => $g['source_kind'] === 'progress' ? 'Progress claim' : 'Month-end claim', 'url' => in_array($g['source_kind'], ['claim', 'progress'], true) ? route('task', ['id' => $g['source_id']]) : route('invoicing')];
     }
     return $items;
 }

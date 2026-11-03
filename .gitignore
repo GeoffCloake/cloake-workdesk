@@ -13,3 +13,4 @@ tests/artifacts/
 !tests/fixture/*.sql
 dist/
 !deploy/migrations/*.sql
+!tests/fixture/whmcs/*.csv

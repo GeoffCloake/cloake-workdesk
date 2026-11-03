@@ -30,6 +30,12 @@ $add('Migration 003 — enquiry details & task sign-off', !$missing003 && in_arr
 $mig004 = ['breakdown_items.template_id', 'breakdown_items.plan_id', 'breakdown_items.line_order', 'breakdown_items.account_name', 'enquiries.billing_mode', 'tasks.billing_mode', 'tasks.parent_task_id', 'tasks.stage_no', 'task_templates.id', 'enquiry_task_plans.id', 'billing_milestones.id'];
 $missing004 = array_values(array_filter($mig004, fn($c) => !isset($cols[$c])));
 $add('Migration 004 — pricing, templates, planned tasks, stages, milestones', !$missing004 && in_array('004_pricing_templates', $ledger ?? [], true), $missing004 ? 'missing: ' . implode(', ', $missing004) : (in_array('004_pricing_templates', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
+$mig005 = ['services.id', 'charges.id', 'settings.k', 'archive_whmcs.id', 'work_log.charge_id'];
+$missing005 = array_values(array_filter($mig005, fn($c) => !isset($cols[$c])));
+$add('Migration 005 — services, charges, billing settings, WHMCS archive', !$missing005 && in_array('005_services_billing', $ledger ?? [], true), $missing005 ? 'missing: ' . implode(', ', $missing005) : (in_array('005_services_billing', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
+if (!$missing005) { $w = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM services) s, (SELECT COUNT(*) FROM archive_whmcs) a, (SELECT COUNT(*) FROM charges) c, (SELECT COUNT(*) FROM archive_whmcs WHERE JSON_SEARCH(source_record,'one','%password%') IS NOT NULL OR JSON_CONTAINS_PATH(source_record,'one','$.Password')) pw");
+  $add('WHMCS import', true, (int)$w['s'] ? $w['s'] . ' services, ' . $w['a'] . ' archived WHMCS rows, ' . $w['c'] . ' invoiced periods' : 'not imported yet');
+  $add('No passwords in the WHMCS archive', (int)$w['pw'] === 0, (int)$w['pw'] ? $w['pw'] . ' rows mention a password' : ''); }
 $uq = oneRow($pdo, "SELECT COUNT(*) n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tasks' AND INDEX_NAME='uq_task_source'");
 $add('Duplicate-conversion guard (tasks unique source key)', (int)$uq['n'] > 0);
 $counts = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM clients) clients, (SELECT COUNT(*) FROM contacts) contacts,

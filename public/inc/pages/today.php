@@ -101,6 +101,12 @@ $queueShown = array_slice($queue, 0, 10);
   <?php endif; ?>
 </section>
 
+<?php $toInv = oneRow($pdo, "SELECT 1 x FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='charges'") ? cm_due_items($pdo) : []; if ($toInv): $invLate = count(array_filter($toInv, fn($x) => $x['overdue'])); ?>
+<section class="today-section" aria-labelledby="inv" data-testid="today-invoicing">
+  <a class="fold-link" href="<?=h(route('invoicing'))?>"><span><strong id="inv">To invoice: <?=count($toInv)?></strong><small><?=$invLate ? $invLate . ' overdue · ' : ''?><?=h(cm_money(array_sum(array_column($toInv, 'amount'))))?> ex GST — renewals, milestones and finished work</small></span><span aria-hidden="true">›</span></a>
+</section>
+<?php endif; ?>
+
 <section class="today-section" aria-labelledby="rev">
   <div class="section-heading"><h2 id="rev">Work to review</h2><a href="<?=h(route('work'))?>">Work Log ›</a></div>
   <?php $nRev = (int)($review['review'] ?? 0); $nUn = (int)($review['unallocated'] ?? 0); ?>

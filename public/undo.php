@@ -22,6 +22,25 @@ try {
     if (!$table) throw new InvalidArgumentException('That change cannot be undone.');
     $payload = json_decode((string)$ev['payload'], true) ?: [];
     $isChange = fn($v) => is_array($v) && array_key_exists('previous', $v) && array_key_exists('current', $v);
+    // v0.13: a recorded Xero invoice — remove its charges, claims back to pending, services back to their previous period.
+    if ($table === 'invoice') {
+        $iv = is_array($payload['_invoice'] ?? null) ? $payload['_invoice'] : null;
+        if (!$iv) throw new InvalidArgumentException('That change cannot be undone.');
+        foreach ($iv['services'] ?? [] as $sid => $d) {
+            $row = oneRow($pdo, 'SELECT id,next_period_start FROM services WHERE id=? FOR UPDATE', [(int)$sid]);
+            if (!$row || (string)$row['next_period_start'] !== (string)$d['current']) throw new InvalidArgumentException('A service on that invoice has moved on again since, so nothing was undone.');
+            $pdo->prepare('UPDATE services SET next_period_start=?, updated_at=NOW() WHERE id=?')->execute([$d['previous'], (int)$sid]);
+        }
+        $ids = array_map('intval', $iv['created'] ?? []);
+        if ($ids) {
+            $pdo->exec('UPDATE work_log SET charge_id=NULL WHERE charge_id IN (' . implode(',', $ids) . ')');
+            $pdo->exec("DELETE FROM charges WHERE status='invoiced' AND id IN (" . implode(',', $ids) . ')');
+        }
+        foreach (array_map('intval', $iv['claims'] ?? []) as $cid) $pdo->prepare("UPDATE charges SET status='pending', xero_invoice_number=NULL, recorded_by=NULL, recorded_at=NULL, updated_at=NOW() WHERE id=? AND status='invoiced'")->execute([$cid]);
+        cm_audit($pdo, 'invoice_unrecorded', ['client_id' => $ev['client_id']], 'Undo: ' . $ev['summary'], ['invoice' => $iv]);
+        $pdo->commit();
+        header('Location: ' . route('invoicing'), true, 303); exit;
+    }
     // Several rows at once (v0.12, e.g. retiring the pro-forma tasks): all or nothing.
     if ($table === '*') {
         $rows = is_array($payload['_rows'] ?? null) ? $payload['_rows'] : [];
@@ -46,7 +65,7 @@ try {
         $pdo->commit();
         header('Location: ' . route('templates'), true, 303); exit;
     }
-    $byRowId = in_array($table, ['breakdown_items', 'billing_milestones', 'task_templates', 'enquiry_task_plans'], true);
+    $byRowId = in_array($table, ['breakdown_items', 'billing_milestones', 'task_templates', 'enquiry_task_plans', 'services'], true);
     $rowId = (int)($byRowId ? ($payload['row_id'] ?? 0) : match ($table) {
         'clients' => $ev['client_id'], 'tasks' => $ev['task_id'], 'work_log' => $ev['work_log_id'],
         'enquiries' => $ev['enquiry_id'], 'contacts' => $payload['contact_id'] ?? 0,
@@ -82,6 +101,7 @@ try {
         'enquiries' => 'convert-enquiry.php?id=' . $rowId,
         'breakdown_items', 'billing_milestones' => $ownerUrl($row),
         'task_templates' => 'edit-template.php?id=' . $rowId,
+        'services' => route('service', ['id' => $rowId]),
         'enquiry_task_plans' => 'convert-enquiry.php?id=' . (int)$row['enquiry_id'] . '#plans',
     };
 } catch (Throwable $e) {

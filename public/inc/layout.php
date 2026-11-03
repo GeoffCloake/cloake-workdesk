@@ -13,13 +13,13 @@ function cm_version_label(): string { return 'v' . CLOAKE_VERSION . ' · build '
 
 /**
  * @param string $title   Page heading and <title>
- * @param string $section Which navigation item is current: today|clients|tasks|work|more|enquiries|templates|invoicing|items|check
+ * @param string $section Which navigation item is current: today|clients|tasks|work|more|enquiries|services|templates|invoicing|items|check
  * @param array  $opt     'back' => [href,label], 'bodyClass' => string, 'h1' => bool (default true)
  */
 function cm_page_start(string $title, string $section, array $opt = []): void
 {
     $side = ['today' => 'Today', 'clients' => 'Clients', 'tasks' => 'Tasks', 'work' => 'Work Log',
-             'enquiries' => 'Enquiries', 'templates' => 'Task templates', 'invoicing' => 'Invoicing', 'items' => 'Account Items'];
+             'enquiries' => 'Enquiries', 'services' => 'Services', 'templates' => 'Task templates', 'invoicing' => 'Pending Invoicing', 'items' => 'Account Items'];
     ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f6f3"><meta name="cloake-build" content="<?=h(CLOAKE_BUILD)?>"><title><?=h($title)?> · Cloake Manager</title><link rel="stylesheet" href="<?=h(asset('app.css'))?>"></head>
 <body class="<?=h($opt['bodyClass'] ?? '')?>"><a class="skip" href="#main">Skip to content</a><div class="shell">
@@ -48,7 +48,7 @@ function cm_undo_bar(): void
 function cm_page_end(string $section, array $scripts = []): void
 {
     $bottom = ['today' => 'Today', 'clients' => 'Clients', 'tasks' => 'Tasks', 'work' => 'Work', 'more' => 'More'];
-    $moreGroup = ['more', 'enquiries', 'templates', 'invoicing', 'items', 'check'];
+    $moreGroup = ['more', 'enquiries', 'services', 'templates', 'invoicing', 'items', 'check'];
     ?></main></div>
 <nav class="bottom" aria-label="Main navigation"><?php foreach ($bottom as $k => $v): $cur = $section === $k || ($k === 'more' && in_array($section, $moreGroup, true)); ?><a class="<?=$cur ? 'current' : ''?>" href="<?=h(route($k))?>"<?=$cur ? ' aria-current="page"' : ''?>><?=h($v)?></a><?php endforeach; ?></nav></div>
 <script src="<?=h(asset('app.js'))?>" defer></script><?php foreach ($scripts as $s): ?><script src="<?=h(asset($s))?>" defer></script><?php endforeach; ?></body></html>
