@@ -1,4 +1,4 @@
-/* Cloake Client & Services Manager — v0.9.0 front-end.
+/* Cloake Workdesk (formerly Client & Services Manager) — front-end.
    Progressive enhancement only: every page works without this file.
    No inline JS anywhere (CSP script-src 'self'). */
 (function () {
@@ -19,6 +19,17 @@
     (children || []).forEach(function (c) { if (c != null) n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
     return n;
   }
+  /* v0.15: a link to #materials, #pricing, #stages … opens the "More options" / "More details" around it. */
+  function openTo(hash) {
+    if (!hash || hash.length < 2) return;
+    var t = null; try { t = document.getElementById(decodeURIComponent(hash.slice(1))); } catch (e) { }
+    if (!t) return;
+    for (var d = t.parentElement; d; d = d.parentElement) if (d.tagName === 'DETAILS') d.open = true;
+    if (t.tagName === 'DETAILS') t.open = true;
+    t.scrollIntoView();
+  }
+  openTo(location.hash);
+  window.addEventListener('hashchange', function () { openTo(location.hash); });
   var BUILD = (document.querySelector('meta[name="cloake-build"]') || {}).content || '';
   // After any successful save, drop the cached client index so edits show up in the finder at once.
   if (document.querySelector('.success[role="status"]') || /[?&]saved=1\b/.test(location.search)) { try { sessionStorage.removeItem('cm_client_index'); } catch (e) { } }

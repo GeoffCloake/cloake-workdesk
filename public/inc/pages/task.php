@@ -57,6 +57,18 @@ $hasSignoff = array_key_exists('signed_off_at', $t);
 <?php endif; ?>
 <div class="panel"><h2 class="panel-title">Instructions</h2><div class="prewrap"><?=h($t['instructions'] ?: 'No instructions recorded')?></div></div>
 <?php if (!empty($t['notes'])): ?><div class="panel"><h2 class="panel-title">Notes</h2><div class="prewrap"><?=h($t['notes'])?></div></div><?php endif; ?>
+<?php
+/* v0.15: the advanced parts of a task sit behind one "More options" — open when the task already uses any of them. */
+$use = [];
+$nLines = (int)(oneRow($pdo, 'SELECT COUNT(*) n FROM breakdown_items WHERE task_id=?', [$id])['n'] ?? 0); if ($nLines) $use[] = $nLines . ' price line' . ($nLines === 1 ? '' : 's');
+$nMs = (int)(oneRow($pdo, "SELECT COUNT(*) n FROM billing_milestones WHERE task_id=? AND status<>'void'", [$id])['n'] ?? 0); if ($nMs) $use[] = $nMs . ' milestone' . ($nMs === 1 ? '' : 's');
+if (!empty($t['billing_mode'])) $use[] = $t['billing_mode'] === 'monthly' ? 'billed monthly' : 'billed by milestone';
+$nItems = cm_has_materials($pdo) ? (int)(oneRow($pdo, 'SELECT COUNT(*) n FROM job_items WHERE task_id=?', [$id])['n'] ?? 0) : 0; if ($nItems) $use[] = $nItems . ' material' . ($nItems === 1 ? '' : 's');
+if ($stages) $use[] = count($stages) . ' stage' . (count($stages) === 1 ? '' : 's');
+if ($madeTemplate) $use[] = 'template';
+$moreOpen = $use || !empty($_SESSION['cm_pricing_error']) || (($_SESSION['cm_items_error']['task'] ?? 0) === (int)$t['id']);
+?>
+<details class="more-options" data-testid="more-options"<?=$moreOpen ? ' open' : ''?>><summary><span>More options <small><?=h($use ? implode(' · ', $use) : 'pricing, billing, materials, stages, template')?></small></span></summary>
 <?php cm_pricing_panel($pdo, cm_owner($pdo, 'task', $id)); ?>
 <?php cm_materials_panel($pdo, $t); ?>
 <?php if (!$parent): ?>
@@ -74,8 +86,9 @@ $hasSignoff = array_key_exists('signed_off_at', $t);
 <details><summary>Scheduling &amp; administration</summary><dl><?php foreach (['received_at' => 'Received', 'completed_at' => 'Completed'] as $key => $label): ?><dt><?=h($label)?></dt><dd><?=h(niceDate($t[$key] ?? null))?></dd><?php endforeach; ?>
 <dt>Time estimate</dt><dd><?=$t['estimate_minutes'] ? h(dur((int)$t['estimate_minutes'] * 60)) : '—'?></dd>
 <?php if ($t['legacy_record']): foreach (['vetta_ticket_no' => 'Vetta ticket', 'costs' => 'Additional costs', 'invoice_details' => 'Invoice details', 'time_taken' => 'Time taken (as imported)', 'time_chargeable' => 'Time chargeable (as imported)'] as $key => $label): ?><dt><?=h($label)?></dt><dd><?=h(legacyValue($t, $key) ?: '—')?></dd><?php endforeach; endif; ?></dl></details>
+<section class="panel template-from" data-testid="make-template"><?php if ($madeTemplate): ?><p class="small">A <a href="edit-template.php?id=<?=(int)$madeTemplate['id']?>">task template</a> was made from this task.</p><?php else: ?><form method="post" action="edit-template.php" class="row-inline"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="action" value="from_task"><input type="hidden" name="task_id" value="<?=(int)$t['id']?>"><span class="small muted">Use this task again for other jobs</span><button type="submit" class="secondary">Make a template from this task</button></form><?php endif; ?></section>
+</details>
 <div class="section-heading"><h2>Time sheets <small><?=(int)$tot['n']?> <?=(int)$tot['n'] === 1 ? 'entry' : 'entries'?></small></h2><a href="add-work.php?task_id=<?=(int)$t['id']?>">＋ Log work</a></div>
 <?php if ((int)$tot['n']): ?><div class="totals" data-testid="task-totals"><span><strong><?=h(dur($tot['worked']))?></strong> worked</span><span><strong><?=h(dur($tot['billable']))?></strong> billable</span><?php if ((int)$tot['zero_imported']): ?><small><?=(int)$tot['zero_imported']?> imported <?=(int)$tot['zero_imported'] === 1 ? 'entry has' : 'entries have'?> no recorded time, so totals may be low.</small><?php endif; ?></div><?php endif; ?>
 <?php if (!$entries): ?><p class="emptyline">No work logged against this task yet.</p><?php endif; ?>
 <div class="stack compact-list"><?php foreach ($entries as $r): ?><div class="record"><span><strong><?=h($r['details'] ?: 'Work entry')?></strong><small><?=h(implode(' · ', array_filter([$r['staff_key'], niceDate($r['work_date'] ?? $r['started_at']), dur($r['duration_seconds']) . ' worked', dur($r['billable_seconds']) . ' billable', $r['source_system'] === 'fabrik' ? '' : cm_status_label($r['billability'])])))?></small></span><a class="inline-action" href="edit-work.php?id=<?=(int)$r['id']?>&amp;back=<?=h(rawurlencode(route('task', ['id' => $t['id']])))?>">Edit</a></div><?php endforeach; ?></div>
-<section class="panel template-from" data-testid="make-template"><?php if ($madeTemplate): ?><p class="small">A <a href="edit-template.php?id=<?=(int)$madeTemplate['id']?>">task template</a> was made from this task.</p><?php else: ?><form method="post" action="edit-template.php" class="row-inline"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="action" value="from_task"><input type="hidden" name="task_id" value="<?=(int)$t['id']?>"><span class="small muted">Use this task again for other jobs</span><button type="submit" class="secondary">Make a template from this task</button></form><?php endif; ?></section>

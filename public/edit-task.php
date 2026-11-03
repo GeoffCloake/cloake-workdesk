@@ -154,9 +154,11 @@ cm_page_start($title, 'tasks', ['back' => $id ? [route('task', ['id' => $id]), '
 <div class="field"><label for="client">Client <span class="opt">(optional)</span></label><?php cm_client_picker($clients, (string)($t['client_id'] ?? ''), false, 'No client'); ?></div>
 <?php if ($migrated002): ?>
 <div class="field"><label for="contact_id">Contact</label><select id="contact_id" name="contact_id" data-contact-select><option value="">—</option><?php foreach ($contacts as $k): ?><option value="<?=(int)$k['id']?>"<?=(string)$k['id'] === (string)($t['contact_id'] ?? '') ? ' selected' : ''?>><?=h($k['display_name'] . (($k['status'] ?? '') === 'archive' ? ' (archived)' : ''))?></option><?php endforeach; ?></select><p class="helper" data-contact-help><?=$t['client_id'] ? '' : 'Choose a client to list its contacts.'?></p></div>
+<details class="more-details"<?=(($t['task_category'] ?? '') . ($t['task_type'] ?? '') . ($t['domains'] ?? '')) !== '' ? ' open' : ''?>><summary>More details <small class="muted">category, type, domains</small></summary>
 <div class="pair"><div class="field"><label for="task_category">Task category</label><select id="task_category" name="task_category" data-category-select><option value="">—</option><?php foreach (array_keys($classes) as $c): ?><option value="<?=h($c)?>"<?=$c === ($t['task_category'] ?? '') ? ' selected' : ''?>><?=h($c)?></option><?php endforeach; ?><?php if (($t['task_category'] ?? '') !== '' && !isset($classes[$t['task_category']])): ?><option value="<?=h($t['task_category'])?>" selected><?=h($t['task_category'])?> (current)</option><?php endif; ?></select></div>
 <div class="field"><label for="task_type">Task type</label><select id="task_type" name="task_type" data-type-select data-types="<?=h(json_encode($classes, JSON_UNESCAPED_UNICODE))?>"><option value="">—</option><?php $types = $classes[$t['task_category'] ?? ''] ?? []; if (($t['task_type'] ?? '') !== '' && !in_array($t['task_type'], $types, true)) $types[] = $t['task_type']; foreach ($types as $ty): ?><option value="<?=h($ty)?>"<?=$ty === ($t['task_type'] ?? '') ? ' selected' : ''?>><?=h($ty)?></option><?php endforeach; ?></select></div></div>
 <?=$field('domains', 'Domain(s)', 255, ' placeholder="example.co.nz"')?>
+</details>
 <?php endif; ?>
 </fieldset>
 <fieldset class="field group"><legend>Administration</legend>
@@ -169,10 +171,12 @@ cm_page_start($title, 'tasks', ['back' => $id ? [route('task', ['id' => $id]), '
 <div class="pair"><div class="field"><label for="required">Required</label><input id="required" name="required_by" type="date" value="<?=h($t['required_by'] ? substr((string)$t['required_by'], 0, 10) : '')?>"></div>
 <div class="field"><label for="completed_on">Completed</label><input id="completed_on" name="completed_on" type="date" value="<?=h($t['completed_at'] ? substr((string)$t['completed_at'], 0, 10) : '')?>"></div></div>
 <p class="helper">Choosing “Completed” fills today’s date if none is set. Re-opening a task clears it.</p>
+<details class="more-details"<?=((string)($t['queue'] ?? '') !== '' && (int)$t['queue'] !== 0) || ($t['job_number'] ?? '') . ($t['purchase_order_no'] ?? '') !== '' ? ' open' : ''?>><summary>More details <small class="muted">queue, job and order numbers</small></summary>
 <?php if ($migrated002): ?><div class="field narrow"><label for="queue">Queue</label><input id="queue" name="queue" inputmode="numeric" maxlength="7" value="<?=h($t['queue'] ?? '')?>"><p class="helper">Lower numbers come first when Tasks are sorted by queue.</p></div><?php endif; ?>
 <?php if (!$imported): ?>
 <div class="pair"><?=$field('job_number', 'Job number', 100)?><?=$field('purchase_order_no', 'Order no', 80)?></div>
 <?php endif; ?>
+</details>
 <details<?=($t['notes'] ?? '') !== '' ? ' open' : ''?>><summary>Notes</summary><div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes"><?=h($t['notes'] ?? '')?></textarea></div></details>
 </fieldset>
 <?php if (!$imported): ?>

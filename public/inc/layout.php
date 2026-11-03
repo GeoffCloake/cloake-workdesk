@@ -3,11 +3,15 @@ declare(strict_types=1);
 /*
  * Shared page chrome: header (with visible version/build), desktop sidebar,
  * fixed five-item phone navigation. Used by index.php AND every form page.
+ * v0.15 (Cloake Workdesk): the sidebar shows only the everyday screens; everything else is under More….
  */
 if (PHP_SAPI !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === basename(__FILE__)) { http_response_code(404); exit; }
 
 /** Cache-busting asset URL tied to the build, so phones never keep stale CSS/JS. */
 function asset(string $path): string { return 'assets/' . $path . '?v=' . rawurlencode(CLOAKE_BUILD); }
+
+/** Sections reached from More… (the sidebar highlights More… on these). */
+const CM_MORE_SECTIONS = ['more', 'services', 'templates', 'invoicing', 'items', 'check', 'workload', 'claims', 'billing', 'staff'];
 
 function cm_version_label(): string { return 'v' . CLOAKE_VERSION . ' · build ' . CLOAKE_BUILD; }
 
@@ -18,18 +22,17 @@ function cm_version_label(): string { return 'v' . CLOAKE_VERSION . ' · build '
  */
 function cm_page_start(string $title, string $section, array $opt = []): void
 {
-    $side = ['today' => 'Today', 'clients' => 'Clients', 'tasks' => 'Tasks', 'workload' => 'Workload', 'work' => 'Work Log',
-             'enquiries' => 'Enquiries', 'services' => 'Services', 'templates' => 'Task templates', 'invoicing' => 'Pending Invoicing', 'items' => 'Account Items'];
-    // v0.14: pages that are not router screens, so the desktop sidebar reaches everything the phone's More list does.
-    $sideMinor = ['claims' => ['claims.php', 'Month-end claims'], 'billing' => ['billing-settings.php', 'Billing settings'], 'staff' => ['staff.php', 'Staff & hours'], 'more' => [route('more'), 'More…']];
+    $side = ['today' => 'Today', 'tasks' => 'Tasks', 'work' => 'Work Log', 'clients' => 'Clients', 'enquiries' => 'Enquiries'];
+    // Everything else lives on More… (highlighted while you are on one of those screens).
+    $inMore = in_array($section, CM_MORE_SECTIONS, true);
     ?><!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f6f3"><meta name="cloake-build" content="<?=h(CLOAKE_BUILD)?>"><title><?=h($title)?> · Cloake Manager</title><link rel="stylesheet" href="<?=h(asset('app.css'))?>"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f6f3"><meta name="cloake-build" content="<?=h(CLOAKE_BUILD)?>"><title><?=h($title)?> · Cloake Workdesk</title><link rel="stylesheet" href="<?=h(asset('app.css'))?>"></head>
 <body class="<?=h($opt['bodyClass'] ?? '')?>"><a class="skip" href="#main">Skip to content</a><div class="shell">
-<header class="top"><a class="brand" href="index.php"><span class="brand-mark" aria-hidden="true">C</span><span>Cloake <small class="build-label" data-testid="version"><?=h(cm_version_label())?></small></span></a>
+<header class="top"><a class="brand" href="index.php"><span class="brand-mark" aria-hidden="true">C</span><span>Cloake Workdesk <small class="build-label" data-testid="version"><?=h(cm_version_label())?></small></span></a>
 <div class="top-actions"><a class="top-find" href="<?=h(route('clients'))?>" aria-label="Find a client" data-finder-shortcut>Find client</a><form method="post" action="index.php" class="signout" data-signout><input type="hidden" name="action" value="logout"><button class="quiet" type="submit">Sign out</button></form></div></header>
 <div class="layout"><aside class="side" aria-label="Workspace"><div class="eyebrow">WORKSPACE</div><?php foreach ($side as $k => $v): ?><a class="nav<?=$section === $k ? ' current' : ''?>" href="<?=h(route($k))?>"<?=$section === $k ? ' aria-current="page"' : ''?>><?=h($v)?></a><?php endforeach; ?>
-<?php foreach ($sideMinor as $k => [$href, $label]): ?><a class="nav nav-minor<?=$section === $k ? ' current' : ''?>" href="<?=h($href)?>"<?=$section === $k ? ' aria-current="page"' : ''?>><?=h($label)?></a><?php endforeach; ?>
-<a class="nav nav-minor<?=$section === 'check' ? ' current' : ''?>" href="<?=h(route('check'))?>">Release check</a><p class="muted small">Imported records stay read-only. No Xero or invoice actions are enabled.</p><p class="muted small side-version"><?=h(cm_version_label())?></p></aside>
+<a class="nav nav-more<?=$inMore ? ' current' : ''?>" href="<?=h(route('more'))?>"<?=$inMore ? ' aria-current="page"' : ''?>>More…</a>
+<p class="muted small side-version"><?=h(cm_version_label())?></p></aside>
 <main id="main" tabindex="-1"><?php if (!empty($opt['back'])): ?><a class="back" href="<?=h($opt['back'][0])?>">‹ <?=h($opt['back'][1])?></a><?php endif; ?><?php cm_undo_bar(); ?><?php if (($opt['h1'] ?? true)): ?><h1><?=h($title)?></h1><?php endif;
 }
 
@@ -51,7 +54,7 @@ function cm_undo_bar(): void
 function cm_page_end(string $section, array $scripts = []): void
 {
     $bottom = ['today' => 'Today', 'clients' => 'Clients', 'tasks' => 'Tasks', 'work' => 'Work', 'more' => 'More'];
-    $moreGroup = ['more', 'enquiries', 'services', 'templates', 'invoicing', 'items', 'check', 'workload', 'claims', 'billing', 'staff'];
+    $moreGroup = array_merge(CM_MORE_SECTIONS, ['enquiries']);
     ?></main></div>
 <nav class="bottom" aria-label="Main navigation"><?php foreach ($bottom as $k => $v): $cur = $section === $k || ($k === 'more' && in_array($section, $moreGroup, true)); ?><a class="<?=$cur ? 'current' : ''?>" href="<?=h(route($k))?>"<?=$cur ? ' aria-current="page"' : ''?>><?=h($v)?></a><?php endforeach; ?></nav></div>
 <script src="<?=h(asset('app.js'))?>" defer></script><?php foreach ($scripts as $s): ?><script src="<?=h(asset($s))?>" defer></script><?php endforeach; ?></body></html>

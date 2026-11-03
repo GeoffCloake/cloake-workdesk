@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /*
- * Cloake Client & Services Manager — shared bootstrap.
+ * Cloake Workdesk — shared bootstrap.
  *
  * Every page includes this file first. It is the ONLY place that defines the
  * private configuration path, session settings, security headers and the
@@ -16,7 +16,7 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === basename(__FILE__)) { http_response_code(404); exit; }
 if (PHP_VERSION_ID < 80000) {
     http_response_code(503); header('Content-Type: text/plain; charset=utf-8');
-    exit("Cloake Manager needs PHP 8.0 or newer; this site is running PHP " . PHP_VERSION . ".\nIn cPanel > MultiPHP Manager, set this domain to ea-php83.");
+    exit("Cloake Workdesk needs PHP 8.0 or newer; this site is running PHP " . PHP_VERSION . ".\nIn cPanel > MultiPHP Manager, set this domain to ea-php83.");
 }
 
 require_once __DIR__ . '/../version.php';

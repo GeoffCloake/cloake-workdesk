@@ -1,10 +1,26 @@
-# Changelog — Cloake Client & Services Manager
+# Changelog — Cloake Workdesk (formerly Cloake Client & Services Manager)
 
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.15.0 · build 20261103.4 — 3 November 2026
+**Status: built and tested locally; first release installed from GitHub with `cm-update v0.15.0`.** Tested: 113/113 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.14.0 through `cm-update` (git route). **No database change.** Rollback target: v0.14.0.
+Simpler screens (your request: "minimal for basic things… step back higher level functions") and the new name.
+
+### Changed — the app is now **Cloake Workdesk**
+- Header, page titles, sign-in page and More page. Nothing else about it changes (same address, same sign-in, same data).
+
+### Changed — fewer things on screen
+- **Desktop sidebar:** Today · Tasks · Work Log · Clients · Enquiries · **More…** only. Workload, Task templates, Staff & hours, Pending Invoicing, Services, Month-end claims, Billing settings, Account Items and Release check are on **More…** (grouped: Everyday, Planning, Billing, System). More… is highlighted while you're on any of them. Phone navigation unchanged.
+- **Task page:** Log work, status, sign-off, instructions, notes and time sheets as before. **Price & billing, Materials, Stages, Make a template** and the recorded pricing/administration fields are behind one **More options** — closed on a plain task, **open by itself when the task already uses any of them** (its heading says what, e.g. "2 price lines · 1 material"). Links back to a panel (after saving a price line, a material, a stage, or Undo) open it automatically.
+- **Edit task form:** category, type and domains, and queue / job / order numbers, are under **More details** (open when already filled in). Pricing & billing and Notes were already folded.
+- Nothing removed; every feature is where it was, one click further away.
+
+### Added — installing from GitHub
+- `deploy/cm-update.sh` (installed on the server as `cm-update`): lists releases on GitHub, or fetches one (`release/vX.Y.Z` branch), checks its version, builds the package, runs the dry run, asks, then runs the same installer (backup, verify, automatic rollback).
+
 ## v0.14.0 · build 20261103.3 — 3 November 2026
-**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~19:25). Rollback target for the next release.** Tested locally beforehand: 111/111 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.13.0 by both database routes.
+**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~19:25). Rollback target for v0.15.0.** Tested locally beforehand: 111/111 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.13.0 by both database routes.
 Scheduling & materials (roadmap v0.14, your points 19 and 20) and the desktop sidebar gap you found. **Includes database migration 006** (add-only, reversible).
 
 ### Added — Workload (who is doing what, and when)

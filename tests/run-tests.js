@@ -498,7 +498,8 @@ function protectedChecksums() {
   const ver = async page => ({ csrf: await page.inputValue('input[name=csrf]'), ver: await page.inputValue('input[name=ver]') });
   const save = async page => { await Promise.all([page.waitForNavigation(), page.click('button.save')]); };
   const setSelect = async (page, sel, v) => page.evaluate(([s, v]) => { const e = document.querySelector(s); e.value = String(v); e.dispatchEvent(new Event('cm-sync')); e.dispatchEvent(new Event('change', { bubbles: true })); }, [sel, v]);
-  const openDetails = async (page, text) => page.evaluate(t => { for (const d of document.querySelectorAll('details')) if (d.querySelector('summary').textContent.includes(t)) d.open = true; }, text);
+  // v0.15: also opens the "More options" / "More details" around it, as a person would click them first.
+  const openDetails = async (page, text) => page.evaluate(t => { for (const d of document.querySelectorAll('details')) if (d.querySelector('summary').textContent.includes(t)) for (let x = d; x; x = x.parentElement) if (x.tagName === 'DETAILS') x.open = true; }, text);
   const audit = (where, kind) => one(`SELECT payload FROM activity_events WHERE ${where} AND event_kind='${kind}' ORDER BY id DESC LIMIT 1`);
 
   await test('X01', 'Edit an imported client: saved to the new columns, original record untouched, audited, finder finds the new phone at once', async () => {
@@ -666,6 +667,7 @@ function protectedChecksums() {
     await P.waitForFunction(() => document.querySelectorAll('[data-contact-select] option').length > 1, null, { timeout: 4000 });
     const kid = await P.$eval('[data-contact-select] option:nth-child(2)', o => o.value);
     await P.selectOption('#contact_id', kid);
+    await P.click('summary:has-text("category, type, domains")'); await P.click('summary:has-text("queue, job and order")');
     const cats = await P.$$eval('#task_category option', o => o.map(x => x.value).filter(Boolean));
     assert(cats.length > 0, 'no categories');
     const cat = cats.find(c => c.startsWith('Graphic')) || cats[0];
@@ -689,7 +691,7 @@ function protectedChecksums() {
     const tid = +one(`SELECT id FROM tasks WHERE source_system='fabrik' AND client_id IS NOT NULL AND NOT (${closed('status')}) ORDER BY id DESC LIMIT 1`);
     await go(P, 'edit-task.php?id=' + tid);
     for (const b of await P.$$('input[name="assigned_to[]"]')) if (await b.isChecked()) await b.uncheck();
-    await P.check('input[name="assigned_to[]"][value="roselyn"]'); await P.fill('#queue', '7'); await save(P);
+    await P.check('input[name="assigned_to[]"][value="roselyn"]'); await openDetails(P, 'queue, job and order'); await P.fill('#queue', '7'); await save(P);
     const r = sql(`SELECT assigned_to,queue FROM tasks WHERE id=${tid}`)[0];
     assert(r[0] === 'roselyn' && r[1] === '7', 'row ' + r);
     const foreign = one(`SELECT k.id FROM contacts k JOIN tasks t ON t.id=${tid} WHERE k.client_id IS NOT NULL AND k.client_id<>t.client_id LIMIT 1`);
@@ -1452,15 +1454,42 @@ function protectedChecksums() {
     await go(P, 'index.php?page=invoicing'); assert(await P.locator(`input[value="mat:${kItem}"]`).count() === 0, 'cancelled item on Pending Invoicing');
     sql(`UPDATE settings SET v='' WHERE k='material_markup_pct'`);
   });
-  await test('K09', 'Desktop sidebar reaches Workload, Month-end claims, Billing settings, Staff & hours and More (all load)', async () => {
+  /* ================= v0.15: simpler screens, Cloake Workdesk ================= */
+  await test('W01', 'Desktop sidebar shows only Today, Tasks, Work Log, Clients, Enquiries and More…; More… lists every other screen (all load) and is highlighted on them', async () => {
     const { ctx, page } = await newSession(DESKTOP);
     await go(page, 'index.php?page=today');
     const links = await page.$$eval('aside.side a.nav', a => a.map(x => [x.textContent.trim(), x.getAttribute('href')]));
-    for (const want of ['Workload', 'Month-end claims', 'Billing settings', 'Staff & hours', 'More…']) {
-      const l = links.find(x => x[0] === want); assert(l, 'missing from sidebar: ' + want);
-      const r = await go(page, l[1]); assert(r.status() === 200, want + ' → ' + r.status());
-      if (want !== 'More…') assert(await page.locator('aside.side a.nav.current').innerText() === want, want + ' not highlighted');
+    assert(JSON.stringify(links.map(x => x[0])) === JSON.stringify(['Today', 'Tasks', 'Work Log', 'Clients', 'Enquiries', 'More…']), 'sidebar ' + links.map(x => x[0]));
+    for (const [label, href] of links) { const r = await go(page, href); assert(r.status() === 200, label + ' → ' + r.status()); }
+    await go(page, 'index.php?page=more');
+    const more = await page.$$eval('main .more-list a', a => a.map(x => [x.querySelector('strong').textContent.trim(), x.getAttribute('href')]));
+    for (const want of ['Workload', 'Task templates', 'Staff & hours', 'Pending Invoicing', 'Services', 'Month-end claims', 'Billing settings', 'Account Items', 'Release check', 'Enquiries']) assert(more.find(x => x[0] === want), 'missing from More: ' + want);
+    for (const [label, href] of more) {
+      const r = await go(page, href); assert(r.status() === 200, label + ' → ' + r.status());
+      if (!['Enquiries', '＋ Quick Enquiry'].includes(label)) assert(await page.locator('aside.side a.nav.current').innerText() === 'More…', label + ': More… not highlighted');
     }
+    await ctx.close();
+  });
+  await test('W02', 'Task page: a plain task keeps pricing, materials, stages and template behind a closed "More options"; one that uses them opens it; a #materials link opens it', async () => {
+    const plain = +one(`SELECT t.id FROM tasks t WHERE t.parent_task_id IS NULL AND t.billing_mode IS NULL AND NOT EXISTS (SELECT 1 FROM breakdown_items b WHERE b.task_id=t.id) AND NOT EXISTS (SELECT 1 FROM billing_milestones m WHERE m.task_id=t.id) AND NOT EXISTS (SELECT 1 FROM job_items i WHERE i.task_id=t.id) AND NOT EXISTS (SELECT 1 FROM tasks s WHERE s.parent_task_id=t.id) AND NOT EXISTS (SELECT 1 FROM task_templates x WHERE x.from_task_id=t.id) AND NOT (${closed('t.status')}) ORDER BY t.id DESC LIMIT 1`);
+    assert(plain, 'no plain open task');
+    await go(P, 'index.php?page=task&id=' + plain);
+    assert(await P.locator('[data-testid=more-options]').evaluate(d => !d.open), 'More options open on a plain task');
+    assert(!(await P.locator('#pricing').isVisible()) && !(await P.locator('#materials').isVisible()), 'advanced panels visible');
+    assert(await P.locator('a.ca.primary:has-text("Log work")').isVisible() && await P.locator('[data-testid=signoff]').isVisible(), 'everyday actions hidden');
+    await P.click('[data-testid=more-options] > summary');
+    assert(await P.locator('#pricing').isVisible() && await P.locator('[data-testid=make-template]').isVisible(), 'More options does not reveal the panels');
+    await go(P, 'index.php?page=task&id=' + plain + '#materials');
+    assert(await P.locator('[data-testid=more-options]').evaluate(d => d.open), '#materials link did not open More options');
+    const used = +one(`SELECT task_id FROM breakdown_items WHERE task_id IS NOT NULL ORDER BY id DESC LIMIT 1`);
+    if (used) { await go(P, 'index.php?page=task&id=' + used); const sm = P.locator('[data-testid=more-options]'); assert(await sm.evaluate(d => d.open) && /price line/.test(await sm.locator('> summary').innerText()), 'task with price lines: More options closed or no hint'); }
+  });
+  await test('W03', 'The app is called Cloake Workdesk: page titles, header, More page and sign-in page', async () => {
+    await go(P, 'index.php?page=today');
+    assert(/· Cloake Workdesk$/.test(await P.title()) && /Cloake Workdesk/.test(await P.locator('header.top .brand').innerText()), 'title/header');
+    await go(P, 'index.php?page=more'); assert(/Cloake Workdesk v/.test(await P.locator('.more-version').innerText()), 'more page');
+    const { ctx, page } = await newSession(DESKTOP, { login: false });
+    await go(page, 'index.php'); assert(/Cloake Workdesk/.test(await page.title()) && /Cloake Workdesk/.test(await page.locator('main.login').innerText()), 'sign-in page');
     await ctx.close();
   });
   /* ================= Today correctness ================= */

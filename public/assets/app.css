@@ -1,4 +1,4 @@
-/* Cloake Client & Services Manager — v0.9.0
+/* Cloake Workdesk (formerly Client & Services Manager) — v0.9.0
    Single stylesheet for every page. Phone-first; desktop layout from 760px.
    The Content-Security-Policy forbids inline <style>/style="", so ALL styling lives here. */
 
@@ -373,3 +373,12 @@ button.danger{background:#fff;color:var(--late);border:1.5px solid var(--late)}
 .week-hours input{padding:6px 4px;text-align:center}
 .staff-row.is-off summary strong{color:var(--muted)}
 .item-cancelled{opacity:.6}.item-cancelled .pl-main strong{text-decoration:line-through}
+
+/* v0.15 — simpler screens: advanced parts behind "More options" / "More details" */
+details.more-options{background:transparent;border-style:dashed;padding:0 12px;margin:16px 0}
+details.more-options>summary small,details.more-details>summary small{display:block;font-weight:400;font-size:12.5px;color:var(--muted);margin-top:2px}
+details.more-options>summary span{display:block;padding:8px 0}
+details.more-options[open]{padding-bottom:6px}
+details.more-details{background:transparent}
+.more-group{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:18px 2px 6px}
+.more-group:first-of-type{margin-top:4px}
