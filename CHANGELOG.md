@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.12.0 · build 20261103.1 — 3 November 2026
-**Status: built and tested locally (91/91 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data; installed over v0.11.0 by both database routes). Not yet deployed. Not yet user-confirmed.**
+**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~15:00). Rollback target for v0.13.** Tested locally beforehand: 91/91 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.11.0 by both database routes.
 Pricing & templates (roadmap v0.12), with progressive billing recorded. **Includes database migration 004** (add-only, reversible). Design approved by you on 3 Nov.
 
 ### Added — pricing module (one panel on enquiries, tasks and task templates)
@@ -43,7 +43,7 @@ Pricing & templates (roadmap v0.12), with progressive billing recorded. **Includ
 - v0.13: services register and WHMCS import, Pending Invoicing for Cathy (renewals, milestones, month-end claims; Xero invoice numbers recorded), charges from the Work Log.
 
 ## v0.11.0 · build 20261101.1 — 1 November 2026
-**Status: deployed to manager-dev and user-confirmed (reported 3 Nov 2026). Rollback target for v0.12.0.** Tested locally beforehand: 75/75 tests on MySQL 8.0.46 (real-data replica) and MariaDB.
+**Status: deployed to manager-dev and user-confirmed (reported 3 Nov 2026). Was the rollback target for v0.12.0.** Tested locally beforehand: 75/75 tests on MySQL 8.0.46 (real-data replica) and MariaDB.
 First release of the enquiry-to-invoice roadmap (your 20 points, 1 Nov). **Includes database migration 003** (add-only, reversible).
 
 ### Added — enquiries
