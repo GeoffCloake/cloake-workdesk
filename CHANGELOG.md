@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.17.0 · build 20261103.6 — 3 November 2026
-**Status: built and tested locally (against a local stand-in for Xero — no real Xero call has been made yet).** Tested: 125/125 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.16.0 with `cm-update` by both database routes; v0.16.0's own suite 119/119 after going back. **Includes database migration 008** (add-only, one column).
+**Status: deployed to manager-dev and user-confirmed 4 Nov 2026 (~10:39, "installed and looking good"). Real Xero (Demo Company) test pending — so far tested only against a local stand-in.** Tested: 125/125 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.16.0 with `cm-update` by both database routes; v0.16.0's own suite 119/119 after going back. **Includes database migration 008** (add-only, one column).
 Xero draft invoices — test with Xero's **Demo Company** first.
 
 ### Added — Xero connection (More… › Billing › Xero connection)
