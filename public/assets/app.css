@@ -347,3 +347,29 @@ button.danger{background:#fff;color:var(--late);border:1.5px solid var(--late)}
 .il-amt small{font-size:12px;color:var(--muted)}
 .invoice-client .panel-title small{font-weight:400;font-size:12.5px}
 .raw-record dd{font-size:13px}
+
+/* ---------- v0.14 workload, staff, materials ---------- */
+.wl-person .panel-title small{font-weight:400;font-size:12.5px}
+.wl-sub{font-size:13.5px;margin:10px 0 6px}.wl-sub.late{color:var(--late)}
+.wl-days{display:grid;gap:6px}
+.wl-day{border:1px solid var(--line);border-radius:10px;padding:7px 9px;background:#fcfcfa;min-height:46px}
+.wl-day.is-today{border-color:#8fb19d;background:#f2f8f4}
+.wl-day.is-over .wl-date small{color:var(--late);font-weight:700}
+.wl-date{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px}
+.wl-date small{color:var(--muted)}
+.wl-cards{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:5px}
+.wl-card{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-left:4px solid #7ea6c4;border-radius:9px;padding:6px 6px 6px 9px;min-width:0}
+.wl-card.is-late{border-left-color:var(--late)}
+.wl-card.is-dragging{opacity:.45}
+.wl-main{flex:1;min-width:0;text-decoration:none;color:inherit}
+.wl-main strong{display:block;font-size:13.5px;overflow-wrap:anywhere}
+.wl-main small{display:block;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.is-drop{outline:2px dashed var(--accent);outline-offset:2px}
+.wl-unsched{margin-top:10px}
+.wl-note{min-height:1.2em;font-size:13px;color:var(--accent);margin:4px 0}
+@media (min-width:760px){.wl-card{cursor:grab}}
+.week-hours{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.week-hours label{display:block;font-size:12px;font-weight:650;margin:0 0 4px;text-align:center}
+.week-hours input{padding:6px 4px;text-align:center}
+.staff-row.is-off summary strong{color:var(--muted)}
+.item-cancelled{opacity:.6}.item-cancelled .pl-main strong{text-decoration:line-through}

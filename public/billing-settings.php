@@ -17,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($k === 'gst_rate' && (!is_numeric($v) || (float)$v < 0 || (float)$v > 1)) throw new InvalidArgumentException('GST rate is a fraction, e.g. 0.15.');
             if ($k === 'hourly_rate_ex_gst' && $v !== '' && !preg_match('/^\d{1,6}(\.\d{1,2})?$/', $v)) throw new InvalidArgumentException('Hourly rate must be dollars ex GST.');
             if ($k === 'charges_from' && $v !== '') m7date($v);
+            if ($k === 'material_markup_pct' && $v !== '' && !preg_match('/^\d{1,3}(\.\d{1,2})?$/', $v)) throw new InvalidArgumentException('Materials markup is a percentage, e.g. 20.');
             $old = oneRow($pdo, 'SELECT v FROM settings WHERE k=? FOR UPDATE', [$k]);
             if ((string)($old['v'] ?? CM_SETTINGS[$k][1]) === $v && $old) continue;
             $pdo->prepare('INSERT INTO settings (k,v,updated_at,updated_by) VALUES (?,?,NOW(),?) ON DUPLICATE KEY UPDATE v=VALUES(v), updated_at=NOW(), updated_by=VALUES(updated_by)')->execute([$k, $v, $by]);
@@ -27,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: billing-settings.php?saved=' . ($changed ? 1 : 0), true, 303); exit;
     } catch (Throwable $e) { $error = cm_edit_error($e, $pdo, 'billing settings'); }
 }
-cm_page_start('Billing settings', 'invoicing', ['back' => [route('invoicing'), 'Pending Invoicing'], 'bodyClass' => 'form-page']);
+cm_page_start('Billing settings', 'billing', ['back' => [route('invoicing'), 'Pending Invoicing'], 'bodyClass' => 'form-page']);
 ?>
 <?php if ($error): ?><div class="alert" role="alert"><?=h($error)?></div><?php endif; ?>
 <?php if (isset($_GET['saved'])): ?><div class="success" role="status"><?=$_GET['saved'] === '1' ? 'Saved.' : 'No changes.'?></div><?php endif; ?>
@@ -38,4 +39,4 @@ cm_page_start('Billing settings', 'invoicing', ['back' => [route('invoicing'), '
 <p class="helper">Task fees: completed tasks billed on completion appear on Pending Invoicing only if they were completed on or after this date (so old work doesn't flood the list). Leave it empty to show none.</p>
 <div class="field"><label for="updated_by">Your name</label><input id="updated_by" name="updated_by" maxlength="100" required value="<?=h((string)($_SESSION['cm_last_staff'] ?? ''))?>"></div>
 <div class="form-actions"><button type="submit" class="save">Save settings</button><a class="cancel" href="<?=h(route('invoicing'))?>">Cancel</a></div></form>
-<?php cm_page_end('invoicing');
+<?php cm_page_end('billing');

@@ -33,6 +33,9 @@ $add('Migration 004 — pricing, templates, planned tasks, stages, milestones', 
 $mig005 = ['services.id', 'charges.id', 'settings.k', 'archive_whmcs.id', 'work_log.charge_id'];
 $missing005 = array_values(array_filter($mig005, fn($c) => !isset($cols[$c])));
 $add('Migration 005 — services, charges, billing settings, WHMCS archive', !$missing005 && in_array('005_services_billing', $ledger ?? [], true), $missing005 ? 'missing: ' . implode(', ', $missing005) : (in_array('005_services_billing', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
+$mig006 = ['tasks.scheduled_on', 'tasks.scheduled_minutes', 'staff.id', 'job_items.id'];
+$missing006 = array_values(array_filter($mig006, fn($c) => !isset($cols[$c])));
+$add('Migration 006 — scheduling and materials', !$missing006 && in_array('006_schedule_materials', $ledger ?? [], true), $missing006 ? 'missing: ' . implode(', ', $missing006) : (in_array('006_schedule_materials', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
 if (!$missing005) { $w = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM services) s, (SELECT COUNT(*) FROM archive_whmcs) a, (SELECT COUNT(*) FROM charges) c, (SELECT COUNT(*) FROM archive_whmcs WHERE JSON_SEARCH(source_record,'one','%password%') IS NOT NULL OR JSON_CONTAINS_PATH(source_record,'one','$.Password')) pw");
   $add('WHMCS import', true, (int)$w['s'] ? $w['s'] . ' services, ' . $w['a'] . ' archived WHMCS rows, ' . $w['c'] . ' invoiced periods' : 'not imported yet');
   $add('No passwords in the WHMCS archive', (int)$w['pw'] === 0, (int)$w['pw'] ? $w['pw'] . ' rows mention a password' : ''); }

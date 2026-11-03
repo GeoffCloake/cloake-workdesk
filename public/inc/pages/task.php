@@ -58,6 +58,7 @@ $hasSignoff = array_key_exists('signed_off_at', $t);
 <div class="panel"><h2 class="panel-title">Instructions</h2><div class="prewrap"><?=h($t['instructions'] ?: 'No instructions recorded')?></div></div>
 <?php if (!empty($t['notes'])): ?><div class="panel"><h2 class="panel-title">Notes</h2><div class="prewrap"><?=h($t['notes'])?></div></div><?php endif; ?>
 <?php cm_pricing_panel($pdo, cm_owner($pdo, 'task', $id)); ?>
+<?php cm_materials_panel($pdo, $t); ?>
 <?php if (!$parent): ?>
 <section class="panel stages" id="stages" data-testid="stages"><h2 class="panel-title">Stages <?php if ($stages): ?><small class="muted"><?=count($stages) - count($openStages)?> of <?=count($stages)?> done</small><?php endif; ?></h2>
 <?php if ($stages): ?><ul class="plan-list"><?php foreach ($stages as $sg): $sgDone = !in_array($sg, $openStages, true); ?><li class="<?=$sgDone ? 'is-done' : ''?>"><span class="pl-main"><a href="<?=h(route('task', ['id' => $sg['id']]))?>"><strong>Stage <?=(int)$sg['stage_no']?>: <?=h($sg['title'])?></strong></a><small>#<?=(int)$sg['id']?> · <?=h(cm_status_label($sg['status']))?><?=$sg['required_by'] ? ' · required ' . h(niceDate($sg['required_by'])) : ''?></small></span><span class="pl-end"><?=$sg['signed_off_at'] ? '<em class="ms-state">Signed off</em>' : ''?></span></li><?php endforeach; ?></ul>

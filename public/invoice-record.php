@@ -2,7 +2,7 @@
 declare(strict_types=1);
 /*
  * Record a Xero invoice against ticked Pending Invoicing lines (v0.13). POST only.
- *   keys[]          svc:<service>:<period start> | ms:<milestone> | fee:<task> | chg:<pending charge>  — all one client
+ *   keys[]          svc:<service>:<period start> | ms:<milestone> | fee:<task> | mat:<material> | chg:<pending charge>  — all one client
  *   invoice_number  the Xero number (e.g. INV-1234), recorded_by (typed name), amount[<key>] for task fees (override)
  * One charges row per line, status invoiced, with the number, who and when. A service moves on to its next period;
  * a task fee ties the task's unbilled hours to the charge. One audit event (invoice_recorded) — undoable: it removes
@@ -69,6 +69,14 @@ try {
             $ids = array_column(allRows($pdo, "SELECT id FROM work_log WHERE task_id=? AND charge_id IS NULL AND billability='billable' AND billable_seconds>0 AND (source_system IS NULL OR source_system<>'fabrik') FOR UPDATE", [(int)$t['id']]), 'id');
             if ($ids) { $pdo->prepare('UPDATE work_log SET charge_id=? WHERE id IN (' . implode(',', array_map('intval', $ids)) . ')')->execute([$cid]); $work = array_merge($work, array_map('intval', $ids)); }
             $total += (float)$a;
+        } elseif (preg_match('/^mat:(\d+)$/', $k, $m)) {
+            $it = oneRow($pdo, 'SELECT i.*, t.title task_title, t.client_id task_client FROM job_items i JOIN tasks t ON t.id=i.task_id WHERE i.id=? FOR UPDATE', [(int)$m[1]]);
+            if (!$it || $it['status'] !== 'received') throw new InvalidArgumentException('A ticked material is no longer received. Reload the page.');
+            if (oneRow($pdo, "SELECT id FROM charges WHERE source_kind='material' AND source_id=? AND status<>'void'", [(int)$it['id']])) throw new InvalidArgumentException('Material “' . $it['description'] . '” has already been invoiced.');
+            $cid = $it['client_id'] ?: $it['task_client']; $one($cid);
+            $amt = round((float)$it['quantity'] * (float)$it['unit_sell_ex_gst'], 2);
+            $insert(['client_id' => $cid, 'kind' => 'material', 'id' => (int)$it['id'], 'start' => (string)$it['received_on'], 'end' => null, 'description' => $it['description'] . ' - ' . $it['task_title'], 'amount' => $amt, 'account' => cm_setting($pdo, 'xero_account_default')]);
+            $total += $amt;
         } elseif (preg_match('/^chg:(\d+)$/', $k, $m)) {
             $g = oneRow($pdo, 'SELECT * FROM charges WHERE id=? FOR UPDATE', [(int)$m[1]]);
             if (!$g || $g['status'] !== 'pending') throw new InvalidArgumentException('A ticked claim has already been recorded or removed. Reload the page.');

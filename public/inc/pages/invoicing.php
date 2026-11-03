@@ -20,7 +20,7 @@ $sum = array_sum(array_column($items, 'amount')); $overdue = array_filter($items
 $err = $_SESSION['cm_invoice_error'] ?? null; unset($_SESSION['cm_invoice_error']);
 $recent = $hasBilling ? allRows($pdo, "SELECT g.xero_invoice_number, g.recorded_by, MAX(g.recorded_at) at, COUNT(*) n, SUM(g.amount_ex_gst) total, c.name client_name FROM charges g LEFT JOIN clients c ON c.id=g.client_id
     WHERE g.origin='manager' AND g.status='invoiced' GROUP BY g.xero_invoice_number, g.recorded_by, c.name ORDER BY at DESC LIMIT 15") : [];
-$kindTag = ['service' => 'Renewal', 'milestone' => 'Milestone', 'task_fee' => 'Task', 'claim' => 'Month-end claim', 'progress' => 'Progress claim', 'manual' => 'Charge'];
+$kindTag = ['service' => 'Renewal', 'milestone' => 'Milestone', 'task_fee' => 'Task', 'claim' => 'Month-end claim', 'material' => 'Material', 'progress' => 'Progress claim', 'manual' => 'Charge'];
 ?>
 <p class="lead">Invoice these in Xero, then record the Xero invoice number here. Renewals show <?=$lead?> weeks before their period starts. Amounts are ex GST.</p>
 <?php if (isset($_GET['recorded']) && !cm_undo_pending()): ?><div class="success" role="status">Invoice <?=h($_GET['recorded'])?> recorded.</div><?php endif; ?>

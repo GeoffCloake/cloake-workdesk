@@ -28,6 +28,7 @@ const CM_SETTINGS = [
     'xero_account_default' => ['Xero account — task work (optional)', ''],
     'hourly_rate_ex_gst' => ['Hourly rate ex GST (month-end claims, hourly tasks)', ''],
     'charges_from' => ['Task fees from (tasks completed on or after)', ''],
+    'material_markup_pct' => ['Materials markup % on cost (blank = sell at cost)', ''],
 ];
 
 function cm_setting(PDO $pdo, string $k): string
@@ -134,6 +135,13 @@ function cm_due_items(PDO $pdo, ?string $horizon = null): array
         $items[] = ['key' => 'chg:' . $g['id'], 'kind' => $g['source_kind'], 'client_id' => $g['client_id'], 'client_name' => $g['client_name'], 'label' => $g['task_title'] ?: $g['description'],
             'description' => (string)$g['description'], 'period_start' => $g['period_start'], 'period_end' => $g['period_end'], 'amount' => (float)$g['amount_ex_gst'],
             'account' => $g['xero_account'] ?: cm_setting($pdo, 'xero_account_default'), 'overdue' => false, 'note' => $g['source_kind'] === 'progress' ? 'Progress claim' : 'Month-end claim', 'url' => in_array($g['source_kind'], ['claim', 'progress'], true) ? route('task', ['id' => $g['source_id']]) : route('invoicing')];
+    }
+    // 5. Received materials not yet charged (v0.14)
+    if (function_exists('cm_has_materials') && cm_has_materials($pdo)) foreach (allRows($pdo, "SELECT i.*, t.title task_title, COALESCE(i.client_id,t.client_id) cid, c.name client_name FROM job_items i JOIN tasks t ON t.id=i.task_id LEFT JOIN clients c ON c.id=COALESCE(i.client_id,t.client_id)
+        WHERE i.status='received' AND NOT EXISTS (SELECT 1 FROM charges g WHERE g.source_kind='material' AND g.source_id=i.id AND g.status<>'void') ORDER BY i.received_on, i.id") as $m) {
+        $items[] = ['key' => 'mat:' . $m['id'], 'kind' => 'material', 'client_id' => $m['cid'], 'client_name' => $m['client_name'], 'label' => $m['description'],
+            'description' => $m['description'] . ((float)$m['quantity'] != 1 ? ' (' . cm_qty($m['quantity']) . ' × ' . cm_money($m['unit_sell_ex_gst']) . ')' : '') . ' - ' . $m['task_title'], 'period_start' => $m['received_on'], 'period_end' => null,
+            'amount' => round((float)$m['quantity'] * (float)$m['unit_sell_ex_gst'], 2), 'account' => cm_setting($pdo, 'xero_account_default'), 'overdue' => false, 'note' => 'Received ' . niceDate($m['received_on']), 'url' => route('task', ['id' => $m['task_id']]) . '#materials'];
     }
     return $items;
 }

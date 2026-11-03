@@ -65,7 +65,7 @@ try {
         $pdo->commit();
         header('Location: ' . route('templates'), true, 303); exit;
     }
-    $byRowId = in_array($table, ['breakdown_items', 'billing_milestones', 'task_templates', 'enquiry_task_plans', 'services'], true);
+    $byRowId = in_array($table, ['breakdown_items', 'billing_milestones', 'task_templates', 'enquiry_task_plans', 'services', 'job_items', 'staff'], true);
     $rowId = (int)($byRowId ? ($payload['row_id'] ?? 0) : match ($table) {
         'clients' => $ev['client_id'], 'tasks' => $ev['task_id'], 'work_log' => $ev['work_log_id'],
         'enquiries' => $ev['enquiry_id'], 'contacts' => $payload['contact_id'] ?? 0,
@@ -103,6 +103,8 @@ try {
         'task_templates' => 'edit-template.php?id=' . $rowId,
         'services' => route('service', ['id' => $rowId]),
         'enquiry_task_plans' => 'convert-enquiry.php?id=' . (int)$row['enquiry_id'] . '#plans',
+        'job_items' => route('task', ['id' => (int)$row['task_id']]) . '#materials',
+        'staff' => 'staff.php',
     };
 } catch (Throwable $e) {
     $msg = cm_edit_error($e, $pdo, 'undo event #' . $eventId);

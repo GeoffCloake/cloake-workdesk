@@ -389,6 +389,35 @@
     });
   });
 
+  /* ---------------- v0.14 Workload: drag a card to another day / person / "Not scheduled" ---------------- */
+  var wl = $('[data-workload]');
+  if (wl && window.fetch) {
+    var dragged = null, note = el('p', { cls: 'wl-note', role: 'status' });
+    wl.parentNode.insertBefore(note, wl);
+    $$('.wl-card[draggable]', wl).forEach(function (c) {
+      c.addEventListener('dragstart', function (e) { dragged = c; c.classList.add('is-dragging'); try { e.dataTransfer.setData('text/plain', c.getAttribute('data-task')); e.dataTransfer.effectAllowed = 'move'; } catch (x) { } });
+      c.addEventListener('dragend', function () { c.classList.remove('is-dragging'); $$('.is-drop', wl).forEach(function (d) { d.classList.remove('is-drop'); }); });
+    });
+    $$('[data-drop]', wl).forEach(function (zone) {
+      zone.addEventListener('dragover', function (e) { if (dragged) { e.preventDefault(); zone.classList.add('is-drop'); } });
+      zone.addEventListener('dragleave', function () { zone.classList.remove('is-drop'); });
+      zone.addEventListener('drop', function (e) {
+        e.preventDefault(); zone.classList.remove('is-drop');
+        if (!dragged) return;
+        var body = new URLSearchParams();
+        body.set('csrf', wl.getAttribute('data-csrf')); body.set('ajax', '1');
+        body.set('id', dragged.getAttribute('data-task')); body.set('from', dragged.getAttribute('data-who'));
+        body.set('to', zone.getAttribute('data-who')); body.set('scheduled_on', zone.getAttribute('data-date') || '');
+        note.textContent = 'Saving…';
+        fetch('schedule.php', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { if (d && d.ok) window.location.reload(); else note.textContent = (d && d.error) || 'Could not move the task.'; })
+          .catch(function () { note.textContent = 'Could not move the task. Use Move instead.'; });
+        dragged = null;
+      });
+    });
+  }
+
   /* ---------------- list filters apply as soon as they change ---------------- */
   $$('[data-autosubmit]').forEach(function (c) { c.addEventListener('change', function () { if (c.form) c.form.submit(); }); });
 

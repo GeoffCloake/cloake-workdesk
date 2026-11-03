@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', 'index.php?page=services', 'service-edit.php', 'claims.php', 'billing-settings.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'service-edit.php', 'claims.php', 'billing-settings.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -1321,6 +1321,147 @@ function protectedChecksums() {
     const r2 = php('undo', '--batch', String(batch), '--confirm'); assert(r2.ok, r2.out.slice(0, 300));
     assert(num(`SELECT COUNT(*) FROM services WHERE source_system='whmcs'`) === 0 && num('SELECT COUNT(*) FROM archive_whmcs') === 0 && num(`SELECT COUNT(*) FROM charges WHERE origin='xero_import'`) === 0 && num(`SELECT COUNT(*) FROM clients WHERE source_system='whmcs'`) === 0, 'leftovers');
     const r3 = php('apply', '--dir', WH, '--by', 'Test R11'); assert(r3.ok, 'reimport failed');
+  });
+  /* ================= v0.14: scheduling, staff, materials, sidebar ================= */
+  const staffOn = sql(`SELECT name FROM staff WHERE active=1 ORDER BY name`).map(r => r[0]);
+  const who1 = staffOn[0], who2 = staffOn[1];
+  const openFor = name => +one(`SELECT id FROM tasks t WHERE CONCAT(',',REPLACE(LOWER(COALESCE(t.assigned_to,'')),' ',''),',') LIKE '%,${esc(name)},%' AND NOT (${closed('t.status')}) AND t.completed_at IS NULL AND t.scheduled_on IS NULL AND (t.source_system<>'fabrik' OR t.required_by IS NULL OR t.required_by >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)) ORDER BY t.id DESC LIMIT 1`);
+  const dPlus = n => nzDate(n);
+  let kTask = 0;
+  await test('K01', 'Staff & hours: people seeded from "Action for"; hours per weekday saved (7.5 h = 450 min), audited, Undo restores; a new person can be added; switched-off people leave the Workload', async () => {
+    const names = sql(`SELECT name FROM staff`).map(r => r[0]);
+    // Names in the imported records' original Action for (never changed by the app, so the same as at migration time).
+    const fromTasks = new Set(sql(`SELECT JSON_UNQUOTE(JSON_EXTRACT(legacy_record,'$.action_for')) FROM tasks WHERE legacy_record IS NOT NULL`).flatMap(r => { const v = r[0] || ''; let a; try { a = JSON.parse(v); } catch (e) { a = v.split(','); } return (Array.isArray(a) ? a : [String(a)]).map(x => String(x).trim().toLowerCase()).filter(x => x && x !== 'null'); }));
+    assert(names.length && [...fromTasks].every(n => n.length > 40 || names.includes(n)), 'staff not seeded from Action for: ' + names.join(','));
+    assert(who1 && who2, 'need two active staff');
+    const sid = +one(`SELECT id FROM staff WHERE name='${esc(who1)}'`);
+    await go(P, 'staff.php'); await openDetails(P, who1.charAt(0).toUpperCase() + who1.slice(1));
+    await P.fill(`#hmon${sid}`, '7.5'); await clickIn(P, `form:has(input[name=id][value="${sid}"]) button.save`);
+    assert(+one(`SELECT min_mon FROM staff WHERE id=${sid}`) === 450, 'hours not saved');
+    await undoClick(P); assert(+one(`SELECT min_mon FROM staff WHERE id=${sid}`) === 360, 'undo of hours');
+    await go(P, 'staff.php'); await openDetails(P, 'Add a person'); await P.fill('#new-name', 'kaytest'); await clickIn(P, 'form:has(#new-name) button[type=submit]');
+    assert(num(`SELECT COUNT(*) FROM staff WHERE name='kaytest' AND active=1 AND min_fri=360 AND min_sat=0`) === 1, 'person not added');
+    await go(P, 'index.php?page=workload'); assert(await P.locator('[data-testid=wl-person][data-person=kaytest]').count() === 1, 'new person not on Workload');
+    const kid = +one(`SELECT id FROM staff WHERE name='kaytest'`);
+    await go(P, 'staff.php'); await openDetails(P, 'Kaytest'); await P.uncheck(`form:has(input[name=id][value="${kid}"]) input[name=active]`); await clickIn(P, `form:has(input[name=id][value="${kid}"]) button.save`);
+    await go(P, 'index.php?page=workload'); assert(await P.locator('[data-testid=wl-person][data-person=kaytest]').count() === 0, 'switched-off person still on Workload');
+  });
+  await test('K02', 'Workload: a task scheduled today shows under its person with booked time against the day\'s hours; unscheduled and overdue-on-schedule tasks are listed separately', async () => {
+    kTask = openFor(who1); assert(kTask, 'no open task for ' + who1);
+    const late = +one(`SELECT id FROM tasks t WHERE CONCAT(',',REPLACE(LOWER(COALESCE(t.assigned_to,'')),' ',''),',') LIKE '%,${esc(who1)},%' AND NOT (${closed('t.status')}) AND t.completed_at IS NULL AND t.id<>${kTask} AND t.scheduled_on IS NULL ORDER BY t.id DESC LIMIT 1`);
+    sql(`UPDATE tasks SET scheduled_on='${todayNZ}', scheduled_minutes=90 WHERE id=${kTask}`);
+    if (late) sql(`UPDATE tasks SET scheduled_on='${dPlus(-3)}' WHERE id=${late}`);
+    await go(P, 'index.php?page=workload&who=' + who1);
+    const day = P.locator(`[data-testid=wl-day][data-who="${who1}"][data-date="${todayNZ}"]`);
+    if (await day.count()) {   // today may be a day with no hours (weekend) and no tasks — then it isn't shown
+      const t = await day.innerText(); assert(t.includes('1h 30m') && (await day.locator(`[data-task="${kTask}"]`).count()) === 1, 'today: ' + t.slice(0, 200));
+    } else assert(false, 'today not shown although a task is scheduled');
+    if (late) assert((await P.locator('[data-testid=wl-person]').innerText()).includes('Overdue on the schedule'), 'overdue section missing');
+    const uns = +one(`SELECT COUNT(*) FROM tasks t WHERE CONCAT(',',REPLACE(LOWER(COALESCE(t.assigned_to,'')),' ',''),',') LIKE '%,${esc(who1)},%' AND NOT (${closed('t.status')}) AND t.completed_at IS NULL AND t.scheduled_on IS NULL AND (t.source_system IS NULL OR t.source_system<>'fabrik' OR t.required_by IS NULL OR DATE(t.required_by) >= DATE_SUB('${todayNZ}', INTERVAL 60 DAY))`);
+    assert((await P.locator('.wl-unsched summary').innerText()).includes(`(${uns})`), 'not-scheduled count vs db ' + uns);
+    if (late) sql(`UPDATE tasks SET scheduled_on=NULL WHERE id=${late}`);
+  });
+  await test('K03', 'Move (phone form): another day, 2 h booked and another person — Action for has the new person instead, audited; Undo puts all three back', async () => {
+    const before = sql(`SELECT assigned_to, scheduled_on, scheduled_minutes FROM tasks WHERE id=${kTask}`)[0];
+    await go(P, `schedule.php?id=${kTask}&who=${who1}`);
+    await P.fill('#scheduled_on', dPlus(2)); await P.fill('#hours', '2'); await P.fill('#minutes', '0'); await P.selectOption('#to', who2); await save(P);
+    const r = sql(`SELECT assigned_to, scheduled_on, scheduled_minutes FROM tasks WHERE id=${kTask}`)[0];
+    const list = r[0].split(',').map(x => x.trim());
+    assert(r[1] === dPlus(2) && r[2] === '120' && list.includes(who2) && !list.includes(who1), 'move ' + JSON.stringify(r));
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE task_id=${kTask} AND event_kind='task_updated' AND summary LIKE '%moved to%'`) >= 1, 'audit');
+    await undoClick(P);
+    const u = sql(`SELECT assigned_to, scheduled_on, scheduled_minutes FROM tasks WHERE id=${kTask}`)[0];
+    assert(JSON.stringify(u) === JSON.stringify(before), 'undo ' + JSON.stringify(u) + ' vs ' + JSON.stringify(before));
+  });
+  await test('K04', 'Drag and drop (desktop): a card dragged to another day is rescheduled; dragged to "Not scheduled" it comes off the schedule; no JS or CSP errors', async () => {
+    const { ctx, page } = await newSession(DESKTOP);
+    await page.setViewportSize({ width: DESKTOP, height: 3000 });   // no scrolling during the simulated drag
+    page._problems.length = 0;   // the sign-in page's 401 is expected
+    await go(page, `index.php?page=workload&who=${who1}&days=14`);
+    const targets = await page.$$eval(`[data-testid=wl-day][data-who="${who1}"]`, ds => ds.map(d => d.getAttribute('data-date')));
+    const target = targets.find(d => d > todayNZ); assert(target, 'no later day shown');
+    // A real mouse drag (Playwright's dragAndDrop helper does not start HTML5 drags here).
+    const mouseDrag = async (src, dst) => { await page.locator(src).hover(); await page.mouse.down(); await page.locator(dst).hover({ force: true }); await page.mouse.move(5, 5, { steps: 2 }); await page.locator(dst).hover({ force: true }); await Promise.all([page.waitForNavigation(), page.mouse.up()]); };
+    await mouseDrag(`[data-testid=wl-card][data-task="${kTask}"] strong`, `[data-testid=wl-day][data-who="${who1}"][data-date="${target}"] .wl-date`);
+    assert(one(`SELECT scheduled_on FROM tasks WHERE id=${kTask}`) === target, 'drag to day: ' + one(`SELECT scheduled_on FROM tasks WHERE id=${kTask}`));
+    await page.evaluate(() => document.querySelectorAll('details.wl-unsched').forEach(d => d.open = true));
+    await mouseDrag(`[data-testid=wl-card][data-task="${kTask}"] strong`, `details.wl-unsched[data-who="${who1}"] summary`);
+    assert(one(`SELECT scheduled_on FROM tasks WHERE id=${kTask}`) === null, 'drag to Not scheduled');
+    assert(!page._problems.length, page._problems.join(' | '));
+    await ctx.close();
+  });
+  await test('K05', 'Scheduling is refused for a closed task and for someone not on Staff & hours (nothing changed)', async () => {
+    await go(P, 'index.php?page=workload'); const csrf = await P.locator('[data-workload]').getAttribute('data-csrf');
+    const done = +one(`SELECT id FROM tasks WHERE LOWER(status)='completed' ORDER BY id LIMIT 1`);
+    let r = await P.request.post(BASE + 'schedule.php', { form: { id: String(done), csrf, ajax: '1', scheduled_on: dPlus(1), from: who1, to: who1 } });
+    assert(r.status() === 422 && one(`SELECT scheduled_on FROM tasks WHERE id=${done}`) === null, 'closed task scheduled');
+    r = await P.request.post(BASE + 'schedule.php', { form: { id: String(kTask), csrf, ajax: '1', scheduled_on: dPlus(1), from: who1, to: 'nobody-here' } });
+    assert(r.status() === 422 && !/nobody-here/.test(one(`SELECT COALESCE(assigned_to,'') FROM tasks WHERE id=${kTask}`)), 'unknown person accepted');
+  });
+  let kItem = 0;
+  await test('K06', 'Materials: sell price defaults to cost + markup (20% → $120 on $100), or is typed; bad cost refused; edit audited and undoable; an ordered item can be deleted', async () => {
+    sql(`UPDATE settings SET v='20' WHERE k='material_markup_pct'`);
+    await go(P, 'index.php?page=task&id=' + kTask + '#materials');
+    await openDetails(P, 'Add an item'); await P.fill('#ni-desc', 'Test K06 SSL certificate'); await P.fill('#ni-sup', 'Test Supplier'); await P.fill('#ni-cost', '100');
+    await clickIn(P, 'form:has(#ni-desc) button[type=submit]');
+    kItem = +one(`SELECT id FROM job_items WHERE description='Test K06 SSL certificate'`);
+    assert(one(`SELECT CONCAT(unit_cost_ex_gst,'|',unit_sell_ex_gst,'|',status) FROM job_items WHERE id=${kItem}`) === '100.00|120.00|ordered', 'markup default');
+    assert((await P.locator('[data-testid=materials]').innerText()).includes('margin $20.00'), 'margin shown');
+    await openDetails(P, 'Add an item'); await P.fill('#ni-desc', 'Test K06 bad'); await P.fill('#ni-cost', 'abc'); await clickIn(P, 'form:has(#ni-desc) button[type=submit]');
+    assert(num(`SELECT COUNT(*) FROM job_items WHERE description='Test K06 bad'`) === 0 && await P.locator('#materials .alert').count() === 1, 'bad cost accepted');
+    await go(P, 'materials.php?id=' + kItem); await P.fill('#e-sell', '150'); await save(P);
+    assert(one(`SELECT unit_sell_ex_gst FROM job_items WHERE id=${kItem}`) === '150.00', 'edit');
+    await undoClick(P); assert(one(`SELECT unit_sell_ex_gst FROM job_items WHERE id=${kItem}`) === '120.00', 'undo of edit');
+    await go(P, 'index.php?page=task&id=' + kTask); await openDetails(P, 'Add an item'); await P.fill('#ni-desc', 'Test K06 mistake'); await P.fill('#ni-cost', '5'); await clickIn(P, 'form:has(#ni-desc) button[type=submit]');
+    const mid = +one(`SELECT id FROM job_items WHERE description='Test K06 mistake'`);
+    await go(P, 'materials.php?id=' + mid); await P.check('.delete-form input[name=confirm]'); await clickIn(P, '.delete-form button');
+    assert(num(`SELECT COUNT(*) FROM job_items WHERE id=${mid}`) === 0, 'delete');
+  });
+  await test('K07', 'A received item is a "Material" line on Pending Invoicing; recording it charges it once and locks the item; Undo frees it', async () => {
+    await go(P, 'index.php?page=task&id=' + kTask); await clickIn(P, `form:has(input[name=id][value="${kItem}"]) button`);
+    assert(one(`SELECT status FROM job_items WHERE id=${kItem}`) === 'received', 'not received');
+    await go(P, 'index.php?page=invoicing');
+    const line = P.locator(`input[name="keys[]"][value="mat:${kItem}"]`); assert(await line.count() === 1, 'not on Pending Invoicing');
+    const card = P.locator('[data-testid=invoice-client]', { has: line });
+    for (const cb of await card.locator('input[name="keys[]"]').all()) if (await cb.getAttribute('value') !== `mat:${kItem}`) await cb.uncheck();
+    await card.locator('input[name=invoice_number]').fill('INV-T0701'); await card.locator('input[name=recorded_by]').fill('Cathy');
+    await Promise.all([P.waitForNavigation(), card.locator('button[type=submit]').click()]);
+    assert(one(`SELECT CONCAT(source_kind,'|',amount_ex_gst,'|',status) FROM charges WHERE xero_invoice_number='INV-T0701'`) === 'material|120.00|invoiced', 'charge');
+    await go(P, 'index.php?page=invoicing'); assert(await P.locator(`input[value="mat:${kItem}"]`).count() === 0, 'still on Pending Invoicing');
+    await go(P, 'index.php?page=task&id=' + kTask); const csrf = await csrfOf(P);
+    const r = await P.request.post(BASE + 'materials.php', { form: { id: String(kItem), csrf, action: 'save', description: 'Test K07 changed', quantity: '1', unit_cost: '1', unit_sell: '1' }, maxRedirects: 0 });
+    assert(one(`SELECT description FROM job_items WHERE id=${kItem}`) === 'Test K06 SSL certificate' && /invoiced/.test(await r.text()), 'invoiced item changed');
+    await go(P, 'index.php?page=invoicing'); // the undo bar was shown after recording; record again to test undo directly
+    sql(`DELETE FROM charges WHERE xero_invoice_number='INV-T0701'`);
+    await go(P, 'index.php?page=invoicing'); const card2 = P.locator('[data-testid=invoice-client]', { has: P.locator(`input[value="mat:${kItem}"]`) });
+    for (const cb of await card2.locator('input[name="keys[]"]').all()) if (await cb.getAttribute('value') !== `mat:${kItem}`) await cb.uncheck();
+    await card2.locator('input[name=invoice_number]').fill('INV-T0702'); await card2.locator('input[name=recorded_by]').fill('Cathy');
+    await Promise.all([P.waitForNavigation(), card2.locator('button[type=submit]').click()]);
+    await undoClick(P);
+    assert(num(`SELECT COUNT(*) FROM charges WHERE xero_invoice_number='INV-T0702'`) === 0, 'undo did not remove the charge');
+    await go(P, 'index.php?page=invoicing'); assert(await P.locator(`input[value="mat:${kItem}"]`).count() === 1, 'not back on Pending Invoicing after Undo');
+  });
+  await test('K08', 'Cancelling an item needs a reason and keeps it off Pending Invoicing; a received item cannot be deleted', async () => {
+    await go(P, 'index.php?page=task&id=' + kTask); const csrf = await csrfOf(P);
+    let r = await P.request.post(BASE + 'materials.php', { form: { id: String(kItem), csrf, action: 'delete', confirm: '1', from_edit: '1' }, maxRedirects: 0 });
+    assert(num(`SELECT COUNT(*) FROM job_items WHERE id=${kItem}`) === 1 && /can’t be deleted/.test(await r.text()), 'received item deleted');
+    r = await P.request.post(BASE + 'materials.php', { form: { id: String(kItem), csrf, action: 'cancel', cancel_reason: '', from_edit: '1' }, maxRedirects: 0 });
+    assert(one(`SELECT status FROM job_items WHERE id=${kItem}`) === 'received', 'cancelled without reason');
+    await postAndGo(P, 'materials.php', { id: String(kItem), csrf, action: 'cancel', cancel_reason: 'Test K08 not needed', from_edit: '1' });
+    assert(one(`SELECT status FROM job_items WHERE id=${kItem}`) === 'cancelled', 'cancel');
+    await go(P, 'index.php?page=invoicing'); assert(await P.locator(`input[value="mat:${kItem}"]`).count() === 0, 'cancelled item on Pending Invoicing');
+    sql(`UPDATE settings SET v='' WHERE k='material_markup_pct'`);
+  });
+  await test('K09', 'Desktop sidebar reaches Workload, Month-end claims, Billing settings, Staff & hours and More (all load)', async () => {
+    const { ctx, page } = await newSession(DESKTOP);
+    await go(page, 'index.php?page=today');
+    const links = await page.$$eval('aside.side a.nav', a => a.map(x => [x.textContent.trim(), x.getAttribute('href')]));
+    for (const want of ['Workload', 'Month-end claims', 'Billing settings', 'Staff & hours', 'More…']) {
+      const l = links.find(x => x[0] === want); assert(l, 'missing from sidebar: ' + want);
+      const r = await go(page, l[1]); assert(r.status() === 200, want + ' → ' + r.status());
+      if (want !== 'More…') assert(await page.locator('aside.side a.nav.current').innerText() === want, want + ' not highlighted');
+    }
+    await ctx.close();
   });
   /* ================= Today correctness ================= */
   await test('T01', 'Today: no record-count tiles; queue items are real open/due records; backlog count matches database', async () => {

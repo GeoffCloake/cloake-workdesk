@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 $tasks = allRows($pdo, $tasksSql, [$from . ' 00:00:00']);
 $pending = allRows($pdo, "SELECT g.*, t.title FROM charges g LEFT JOIN tasks t ON t.id=g.source_id WHERE g.source_kind IN ('claim','progress') AND g.period_start=? ORDER BY g.id", [$from]);
-cm_page_start('Month-end claims', 'invoicing', ['back' => [route('invoicing'), 'Pending Invoicing'], 'bodyClass' => 'form-page']);
+cm_page_start('Month-end claims', 'claims', ['back' => [route('invoicing'), 'Pending Invoicing'], 'bodyClass' => 'form-page']);
 ?>
 <form method="get" class="row-inline"><label for="month">Month</label><input type="month" id="month" name="month" value="<?=h($month)?>"><button type="submit" class="secondary">Show</button></form>
 <?php if ($error): ?><div class="alert" role="alert"><?=h($error)?></div><?php endif; ?>
@@ -83,4 +83,4 @@ cm_page_start('Month-end claims', 'invoicing', ['back' => [route('invoicing'), '
 <div class="form-actions"><button type="submit" class="save">Create claims for <?=h($label)?></button><a class="cancel" href="<?=h(route('invoicing'))?>">Cancel</a></div></form>
 <?php endif; ?>
 <?php if ($pending): ?><h2>Claims for <?=h($label)?></h2><div class="stack compact-list"><?php foreach ($pending as $g): ?><div class="record"><span><strong><?=h($g['description'])?></strong><small><?=h(ucfirst($g['status']))?><?=$g['xero_invoice_number'] ? ' · ' . h($g['xero_invoice_number']) : ''?></small></span><span class="end"><?=h(cm_money($g['amount_ex_gst']))?><?php if ($g['status'] === 'pending'): ?><form method="post"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="month" value="<?=h($month)?>"><input type="hidden" name="action" value="remove"><input type="hidden" name="charge_id" value="<?=(int)$g['id']?>"><button type="submit" class="mini">Remove</button></form><?php endif; ?></span></div><?php endforeach; ?></div><?php endif; ?>
-<?php cm_page_end('invoicing');
+<?php cm_page_end('claims');

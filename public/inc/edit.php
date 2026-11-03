@@ -23,7 +23,7 @@ function cm_changes(array $old, array $new): array
 /** Updates that can be undone (v0.11): event kind => table. The payload holds {field:{previous,current}}. */
 const CM_UNDOABLE = ['client_updated' => 'clients', 'contact_updated' => 'contacts', 'task_updated' => 'tasks', 'work_log_updated' => 'work_log', 'enquiry_updated' => 'enquiries',
     // v0.12: rows identified by payload row_id; '*' = several rows, payload {_rows:[{table,id,changes}]}
-    'price_line_updated' => 'breakdown_items', 'milestone_updated' => 'billing_milestones', 'template_updated' => 'task_templates', 'plan_updated' => 'enquiry_task_plans', 'proforma_retired' => '*',
+    'price_line_updated' => 'breakdown_items', 'milestone_updated' => 'billing_milestones', 'template_updated' => 'task_templates', 'plan_updated' => 'enquiry_task_plans', 'proforma_retired' => '*', 'item_updated' => 'job_items', 'staff_updated' => 'staff',
     // v0.13
     'service_updated' => 'services', 'invoice_recorded' => 'invoice'];
 /** Tables a multi-row undo ('*') may touch. */
