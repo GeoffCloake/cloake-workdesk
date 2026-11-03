@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.16.0 · build 20261103.5 — 3 November 2026
-**Status: built and tested locally.** Tested: 119/119 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.15.0 with `cm-update` by **both database routes** (installer applies 007 / phpMyAdmin SQL first); v0.15.0's own suite 113/113 after going back with `cm-update v0.15.0`. **Includes database migration 007** (add-only, reversible).
+**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~22:40, "looks fine").** Tested beforehand: 119/119 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.15.0 with `cm-update` by **both database routes** (installer applies 007 / phpMyAdmin SQL first); v0.15.0's own suite 113/113 after going back with `cm-update v0.15.0`. **Includes database migration 007** (add-only, reversible).
 Domain register and provisioning (ready for a later Vetta portal sync).
 
 ### Added — Domains (More… › Billing › Domains)
