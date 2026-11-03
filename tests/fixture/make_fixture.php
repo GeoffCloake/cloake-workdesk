@@ -78,6 +78,21 @@ for ($i = 1; $i <= 240; $i++) {
     $out[] = "INSERT INTO tasks (id,client_id,source_system,source_id,title,instructions,required_by,received_at,completed_at,priority,status,pricing,billing_advised,invoice_number,legacy_record) VALUES ($taskId," . ($c ?? 'NULL') . ",'fabrik'," . $q(3000 + $i) . "," . $q($title) . "," . $q("Fictional instructions for task $i.\nSecond line.") . "," . $q($req . ' 00:00:00') . "," . $q($d(-(2010 - $i * 8)) . ' 09:00:00') . "," . $q($completed) . "," . $q(['immediate', 'normal', 'high'][$i % 3]) . "," . $q($status) . "," . $q($rec['pricing']) . "," . ($i % 17 === 0 ? 1 : 0) . "," . $q($i % 23 === 0 ? 'INV-FAKE-' . $i : null) . "," . $j($rec) . ");";
     $taskRows[$taskId] = $c;
 }
+// ---- the "Pro forma" client: its open tasks are used as templates (v0.12 copies them into task_templates) ----
+$pf = count($clientIds) + 1;
+$out[] = "INSERT INTO clients (id,source_system,source_id,name,status,legacy_record) VALUES ($pf,'fabrik','223','Pro forma','active'," . $j(['id' => '223', 'client_name' => 'Pro forma', 'status' => 'active']) . ");";
+foreach ([
+    ['Build new website - Stage 1', "Stage 1rnInstall, and configure website and template to reflect branding requirementsrnExport/import users", 'set', 'yes', 700.00, 'Website design and management', 'New website', 'in progress'],
+    ['Develop content and layout', 'Develop supplied text, images and other content, and assist with loading into the website.', 'hourly', '["yes"]', 0.00, 'Website design and management', 'Website edits', 'in progress'],
+    ['Setup mailbox', 'Setup for charging six monthly mailbox fee\\r\\n\\r\\n', 'web_service', 'no', 0.00, null, null, 'in progress'],
+    ['Old pro-forma (completed)', 'Not a template any more', 'set', 'yes', 50.00, null, null, 'completed'],
+] as $k => [$pt, $pi, $pp, $pc, $pfee, $pcat, $ptype, $pst]) {
+    $taskId++;
+    $rec = ['id' => (string)(4000 + $k), 'client_id' => '223', 'task_title' => $pt, 'task_instructions' => $pi, 'pricing' => $pp, 'chargeable' => $pc, 'value' => (string)(int)$pfee, 'status' => $pst, 'action_for' => '["roselyn","geoff"]', 'task_category' => $pcat, 'task_type' => $ptype];
+    $out[] = "INSERT INTO tasks (id,client_id,source_system,source_id,title,instructions,status,pricing,chargeable,agreed_fee_ex_gst,completed_at,legacy_record) VALUES ($taskId,$pf,'fabrik'," . $q(4000 + $k) . "," . $q($pt) . "," . $q($pi) . "," . $q($pst) . "," . $q($pp) . "," . $q($pc) . "," . $q(number_format($pfee, 2, '.', '')) . "," . ($pst === 'completed' ? $q($d(-900) . ' 12:00:00') : 'NULL') . "," . $j($rec) . ");";
+    // workload columns are filled by migration 002 from legacy_record
+    $taskRows[$taskId] = $pf;
+}
 // ---- work_log (fabrik imports) ----
 for ($i = 1; $i <= 480; $i++) {
     $t = 1 + ($i * 13) % 240; $c = $taskRows[$t];

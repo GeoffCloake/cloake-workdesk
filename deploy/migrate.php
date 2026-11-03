@@ -64,12 +64,15 @@ const LEDGER = "CREATE TABLE IF NOT EXISTS schema_migrations (id VARCHAR(80) NOT
 if ($cmd === 'sql') {
     foreach ($migrations as $id => $m) {
         $apply = ["-- Cloake Manager migration $id: {$m['description']}", "-- phpMyAdmin fallback for deploy/migrate.php apply. Back up the database first.", "-- Run ONCE on a database that does not yet have these columns (check: More > Release check).", "", LEDGER . ";"];
-        foreach ($m['columns'] as $t => $cols) $apply[] = addColumnsSql($t, $cols) . ";";
+        foreach ($m['columns'] as $t => $cols) if ($cols) $apply[] = addColumnsSql($t, $cols) . ";";
+        foreach ($m['tables'] ?? [] as $t => $ddl) $apply[] = $ddl . ";";
         foreach (backfillSql($m) as $s) $apply[] = $s . ";";
         $apply[] = "INSERT INTO schema_migrations (id,description,applied_at,applied_by) VALUES ('$id','" . addslashes($m['description']) . "',NOW(),'phpMyAdmin');";
         file_put_contents("$dir/$id.apply.sql", implode("\n", $apply) . "\n");
-        $rb = ["-- UNDO migration $id. Drops the added columns AND anything entered into them since.", "-- Only for a failed migration. Rolling back the app code does not require this.", ""];
-        foreach ($m['columns'] as $t => $cols) $rb[] = dropColumnsSql($t, array_keys($cols)) . ";";
+        $rb = ["-- UNDO migration $id. Drops the added columns" . (!empty($m['tables']) ? ' and tables' : '') . " AND anything entered into them since.", "-- Only for a failed migration. Rolling back the app code does not require this.", ""];
+        foreach ($m['rollback_sql'] ?? [] as $sql) $rb[] = $sql . ";";
+        foreach (array_reverse(array_keys($m['tables'] ?? [])) as $t) $rb[] = "DROP TABLE IF EXISTS `$t`;";
+        foreach ($m['columns'] as $t => $cols) if ($cols) $rb[] = dropColumnsSql($t, array_keys($cols)) . ";";
         $rb[] = "DELETE FROM schema_migrations WHERE id='$id';";
         file_put_contents("$dir/$id.rollback.sql", implode("\n", $rb) . "\n");
         echo "wrote $dir/$id.apply.sql and .rollback.sql\n";
@@ -91,6 +94,13 @@ function existingColumns(PDO $pdo, string $table): array
     $s = $pdo->prepare('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
     $s->execute([$table]); return array_column($s->fetchAll(), 'COLUMN_NAME');
 }
+function tableExists(PDO $pdo, string $table): bool
+{
+    $s = $pdo->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
+    $s->execute([$table]); return (bool)$s->fetchColumn();
+}
+/** True for "command denied" (no CREATE/ALTER privilege): the installer then offers the phpMyAdmin route. */
+function isPrivilegeError(Throwable $e): bool { return $e instanceof PDOException && in_array((int)($e->errorInfo[1] ?? 0), [1142, 1044, 1227], true); }
 function ledger(PDO $pdo): array
 {
     $t = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='schema_migrations'")->fetchColumn();
@@ -129,9 +139,10 @@ if ($cmd === 'status') {
     foreach ($migrations as $id => $m) {
         $missing = [];
         foreach ($m['columns'] as $t => $cols) foreach (array_diff(array_keys($cols), existingColumns($pdo, $t)) as $c) $missing[] = "$t.$c";
+        foreach (array_keys($m['tables'] ?? []) as $t) if (!tableExists($pdo, $t)) $missing[] = "table $t";
         $state = in_array($id, $applied, true) ? 'applied' : ($missing ? 'PENDING' : 'columns present, not recorded');
         if ($state !== 'applied') $pending++;
-        echo "  $id — $state" . ($missing && $state !== 'applied' ? ' (' . count($missing) . ' columns to add)' : '') . "\n";
+        echo "  $id — $state" . ($missing && $state !== 'applied' ? ' (' . count($missing) . ' columns/tables to add)' : '') . "\n";
     }
     exit($pending ? 10 : 0);
 }
@@ -146,6 +157,10 @@ if ($cmd === 'apply') {
                 $missing = array_diff_key($cols, array_flip(existingColumns($pdo, $t)));
                 if ($missing) { $pdo->exec(addColumnsSql($t, $missing)); echo "    added " . count($missing) . " columns to $t\n"; }
             }
+            foreach ($m['tables'] ?? [] as $t => $ddl) {
+                if (tableExists($pdo, $t)) continue;
+                $pdo->exec($ddl); echo "    created table $t\n";
+            }
             $pdo->beginTransaction();
             foreach (backfillSql($m) as $s) { $n = $pdo->exec($s); echo "    filled from imported records: " . (int)$n . " rows changed\n"; }
             $problems = verify($pdo, $m);
@@ -153,9 +168,10 @@ if ($cmd === 'apply') {
             $s = $pdo->prepare('INSERT INTO schema_migrations (id,description,applied_at,applied_by) VALUES (?,?,NOW(),?)');
             $s->execute([$id, $m['description'], get_current_user() ?: 'cli']);
             $pdo->commit();
-            echo "    verified: every non-empty imported value is in its new column\n";
+            echo "    verified: " . (empty($m["tables"]) ? "every non-empty imported value is in its new column" : "tables created and every check passed") . "\n";
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
+            if (isPrivilegeError($e)) { fwrite(STDERR, "    The database user may not change table structure: " . $e->getMessage() . "\nUse the phpMyAdmin SQL in deploy/migrations/ instead.\n"); exit(3); }
             fwrite(STDERR, "    FAILED: " . $e->getMessage() . "\n"); exit(5);
         }
     }
@@ -169,8 +185,11 @@ if ($cmd === 'rollback') {
     foreach (array_reverse($migrations, true) as $id => $m) {
         $present = [];
         foreach ($m['columns'] as $t => $cols) $present[$t] = array_values(array_intersect(array_keys($cols), existingColumns($pdo, $t)));
+        $tables = array_values(array_filter(array_reverse(array_keys($m['tables'] ?? [])), fn($t) => tableExists($pdo, $t)));
         $recorded = in_array($id, ledger($pdo), true);
-        if (!$recorded && !array_filter($present)) continue;   // never applied: nothing to undo
+        if (!$recorded && !array_filter($present) && !$tables) continue;   // never applied: nothing to undo
+        foreach ($m['rollback_sql'] ?? [] as $sql) { try { $pdo->exec($sql); } catch (PDOException $e) { if ((int)($e->errorInfo[1] ?? 0) !== 1054) throw $e; } }   // 1054: column already gone
+        foreach ($tables as $t) { $pdo->exec("DROP TABLE `$t`"); echo "  $id — dropped table $t\n"; }
         foreach ($present as $t => $cols) if ($cols) { $pdo->exec(dropColumnsSql($t, $cols)); echo "  $id — dropped " . count($cols) . " columns from $t\n"; }
         if ($recorded) $pdo->prepare('DELETE FROM schema_migrations WHERE id=?')->execute([$id]);
         $done++;
