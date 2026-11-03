@@ -36,14 +36,14 @@ You need two files:
    cd ~/cloake-manager/releases/cloake-manager-v0.13.0-build20261103.2
    /opt/cpanel/ea-php83/root/usr/bin/php deploy/import-whmcs.php dry-run --dir ~/cloake-manager/private/whmcs-import-2026-11-03
    ```
-   Expect: `new client: [new client A]`, `new client: [new client B]`, `Archive: 575 rows`, `Services: 173 new`, `Invoiced periods from Xero: 175`, `Pending Invoicing after import: 18 due within 8 weeks (5 overdue), $3,208.10 ex GST`. Paste me the output if anything differs. Then:
+   Expect: two `new client:` lines (the two clients you asked to create), `Archive: 575 rows`, `Services: 173 new`, `Invoiced periods from Xero: 175`, `Pending Invoicing after import: 18 due within 8 weeks (5 overdue), $3,208.10 ex GST`. Paste me the output if anything differs. Then:
    ```bash
    /opt/cpanel/ea-php83/root/usr/bin/php deploy/import-whmcs.php apply --dir ~/cloake-manager/private/whmcs-import-2026-11-03 --by "Geoff"
    ```
    It prints `Imported as batch 1`.
 6. **Check (5 minutes):**
    - **More ▸ Services**: 173 items; filter "Needs a look" shows the 3 priced items with no cycle and the check statuses.
-   - **More ▸ Pending Invoicing**: the 5 overdue at the top ([oldest overdue domain] since 25 Feb …), each with its Xero description and **Copy**.
+   - **More ▸ Pending Invoicing**: the 5 overdue at the top (the oldest since 25 Feb 2026), each with its Xero description and **Copy**.
    - Open a client with hosting: **Services & domains**, and **Former services** for old WHMCS items.
    - **More ▸ Billing settings**: set your **hourly rate** (used for month-end claims and hourly tasks).
 7. **Tidy up:** once you're happy, delete the confidential zip (the unpacked folder can stay in `private/`, or delete it too):

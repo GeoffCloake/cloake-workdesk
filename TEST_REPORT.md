@@ -32,7 +32,7 @@ Run in a private workspace, **not** on your server. Deployed / user-confirmed st
 |---|---|
 | Preparation (`tools/prepare-whmcs-import.py`, private) from the 21 Oct WHMCS exports, your edited reconciliation workbook, Cathy's renewals workbook and the 2 Nov Xero export | Re-run today: all six output files **identical** to the import zip |
 | Passwords | Password column removed (208 values); **68 note lines** that looked like logins removed (clients 2, services 66). After import: **0** archive rows contain a password field |
-| Dry run | 2 new clients ([new client A], [new client B]), 575 archive rows (135 clients, 209 services, 231 domains), **173 services** (116 billed, 25 internal, 32 no charge), **175** invoiced periods from Xero |
+| Dry run | 2 new clients (the two you decided to create), 575 archive rows (135 clients, 209 services, 231 domains), **173 services** (116 billed, 25 internal, 32 no charge), **175** invoiced periods from Xero |
 | Import | As the dry run; batch 1 |
 | Pending Invoicing straight after | **18 renewals due within 8 weeks, $3,208.10 ex GST; 5 overdue = $1,598.10** — the same 5 and the same total as your reconciliation workbook |
 | Undo | Everything removed (clients back to 365); re-import works; same files again refused; undo **refused** while a manager-recorded invoice depends on the batch, nothing changed |
