@@ -382,3 +382,6 @@ details.more-options[open]{padding-bottom:6px}
 details.more-details{background:transparent}
 .more-group{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:18px 2px 6px}
 .more-group:first-of-type{margin-top:4px}
+
+/* v0.16 — domain register */
+.soon,.end.soon{color:#9a6400}

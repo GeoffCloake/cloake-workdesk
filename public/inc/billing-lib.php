@@ -65,7 +65,7 @@ function cm_service_description(array $s, string $start, string $end): string
         case 'email': return "Email Only - $dom $per$bp";
         case 'dns': return "DNS and Forwarding - $dom $per$bp";
         case 'maintenance': return 'Website Maintenance - ' . $dom . ' ' . $per . $bp;
-        default: return 'WEBSITE HOSTING - ' . ($s['plan_name'] ? $s['plan_name'] . ' - ' : '') . "$dom $per$bp";
+        default: return 'WEBSITE HOSTING - ' . ($s['plan_name'] ? $s['plan_name'] . ' - ' : '') . "$dom $per$bp" . (!empty($s['included_domains']) ? "\nAdditional Domains: " . implode(', ', $s['included_domains']) : '');
     }
 }
 
@@ -91,9 +91,10 @@ function cm_due_items(PDO $pdo, ?string $horizon = null): array
     $items = [];
     // 1. Service periods
     foreach (allRows($pdo, "SELECT s.*, c.name client_name FROM services s LEFT JOIN clients c ON c.id=s.client_id
-        WHERE s.status IN ('active','pending','suspended') AND s.billable=1 AND s.is_internal=0 AND s.price_ex_gst>0 AND s.cycle_months>0
+        WHERE s.status IN ('active','pending','suspended') AND s.billable=1 AND s.is_internal=0 AND s.price_ex_gst>0 AND s.cycle_months>0" . (cm_has_domains($pdo) ? ' AND s.included_in_service_id IS NULL' : '') . "
           AND s.next_period_start IS NOT NULL AND s.next_period_start<=? ORDER BY s.next_period_start, s.id", [$horizon]) as $s) {
         $start = (string)$s['next_period_start']; $end = cm_period_end($start, (int)$s['cycle_months']);
+        if ($s['kind'] === 'hosting') $s['included_domains'] = cm_included_domains($pdo, (int)$s['id']);
         $items[] = ['key' => 'svc:' . $s['id'] . ':' . $start, 'kind' => 'service', 'client_id' => $s['client_id'], 'client_name' => $s['client_name'],
             'label' => $s['domain'] ?: $s['label'], 'description' => cm_service_description($s, $start, $end), 'period_start' => $start, 'period_end' => $end,
             'amount' => (float)$s['price_ex_gst'], 'account' => $s['xero_account'] ?: cm_account_for($pdo, $s['kind']), 'overdue' => $start < $today,

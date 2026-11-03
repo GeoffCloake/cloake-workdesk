@@ -40,6 +40,8 @@ try {
             if (!$s) throw new InvalidArgumentException('A ticked service no longer exists. Reload the page.');
             if ((string)$s['next_period_start'] !== $m[2]) throw new InvalidArgumentException(($s['domain'] ?: $s['label']) . ': that period has already been recorded or its date changed. Reload the page.');
             if (!$s['billable'] || $s['is_internal'] || !$s['cycle_months']) throw new InvalidArgumentException(($s['domain'] ?: $s['label']) . ' is not billed.');
+            if (!empty($s['included_in_service_id'])) throw new InvalidArgumentException(($s['domain'] ?: $s['label']) . ' is included in a hosting service, so it is not invoiced on its own.');
+            if ($s['kind'] === 'hosting') $s['included_domains'] = cm_included_domains($pdo, (int)$s['id']);
             $one($s['client_id']);
             $end = cm_period_end($m[2], (int)$s['cycle_months']);
             $insert(['client_id' => $s['client_id'], 'kind' => 'service', 'id' => (int)$s['id'], 'start' => $m[2], 'end' => $end, 'description' => cm_service_description($s, $m[2], $end), 'amount' => $s['price_ex_gst'], 'account' => $s['xero_account'] ?: cm_account_for($pdo, $s['kind'])]);

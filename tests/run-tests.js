@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'service-edit.php', 'claims.php', 'billing-settings.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -1463,7 +1463,7 @@ function protectedChecksums() {
     for (const [label, href] of links) { const r = await go(page, href); assert(r.status() === 200, label + ' → ' + r.status()); }
     await go(page, 'index.php?page=more');
     const more = await page.$$eval('main .more-list a', a => a.map(x => [x.querySelector('strong').textContent.trim(), x.getAttribute('href')]));
-    for (const want of ['Workload', 'Task templates', 'Staff & hours', 'Pending Invoicing', 'Services', 'Month-end claims', 'Billing settings', 'Account Items', 'Release check', 'Enquiries']) assert(more.find(x => x[0] === want), 'missing from More: ' + want);
+    for (const want of ['Workload', 'Task templates', 'Staff & hours', 'Pending Invoicing', 'Services', 'Domains', 'Month-end claims', 'Billing settings', 'Account Items', 'Release check', 'Enquiries']) assert(more.find(x => x[0] === want), 'missing from More: ' + want);
     for (const [label, href] of more) {
       const r = await go(page, href); assert(r.status() === 200, label + ' → ' + r.status());
       if (!['Enquiries', '＋ Quick Enquiry'].includes(label)) assert(await page.locator('aside.side a.nav.current').innerText() === 'More…', label + ': More… not highlighted');
@@ -1492,6 +1492,88 @@ function protectedChecksums() {
     await go(page, 'index.php'); assert(/Cloake Workdesk/.test(await page.title()) && /Cloake Workdesk/.test(await page.locator('main.login').innerText()), 'sign-in page');
     await ctx.close();
   });
+  /* ================= v0.16: domain register and provisioning ================= */
+  {
+    const addDays = n => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date(Date.now() + n * 86400000));
+    const cid = S.client.id, other = +one(`SELECT id FROM clients WHERE id<>${S.client.id} ORDER BY id LIMIT 1`);
+    const mk = (domain, kind, opts = {}) => { const o = { client: cid, billable: 1, price: 30, cycle: 12, next: addDays(400), expiry: null, registrar: null, ...opts };
+      sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,price_ex_gst,cycle_months,next_period_start,expiry_date,registrar,source_system,created_at) VALUES (${o.client},'${kind}','${domain}','active',${o.billable},0,${o.price === null ? 'NULL' : o.price},${o.cycle === null ? 'NULL' : o.cycle},${o.next ? `'${o.next}'` : 'NULL'},${o.expiry ? `'${o.expiry}'` : 'NULL'},${o.registrar ? `'${o.registrar}'` : 'NULL'},'app',NOW())`);
+      return num(`SELECT id FROM services WHERE domain='${domain}' ORDER BY id DESC LIMIT 1`); };
+    let host = 0, dSoon = 0, dFree = 0, dBilled = 0;
+    await test('D01', 'Migration 007: six domain columns on services; the "Set up hosting + domain" checklist template; Release check shows 007 applied', async () => {
+      for (const c of ['nameservers', 'dns_host', 'auto_renew', 'included_in_service_id', 'provider_ref', 'provision_task_id']) assert(num(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='services' AND COLUMN_NAME='${c}'`) === 1, 'missing ' + c);
+      assert(num(`SELECT COUNT(*) FROM task_templates WHERE title='Set up hosting + domain' AND active=1 AND LOCATE('Register or transfer', instructions)>0 AND LOCATE('SSL', instructions)>0`) === 1, 'template');
+      await go(P, 'index.php?page=check'); assert(/Migration 007[^\n]*\n?[^\n]*applied/.test(await P.locator('main').innerText()), 'release check');
+    });
+    await test('D02', 'Domains page: only domains; expiring-within-60-days, expired and registrar filters match the database; expiry shown amber/red', async () => {
+      host = mk('test-d-host.example.nz', 'hosting', { price: 300, cycle: 12 });
+      dSoon = mk('test-d-soon.example.nz', 'domain', { expiry: addDays(20), registrar: 'TestReg D02' });
+      mk('test-d-gone.example.nz', 'domain', { expiry: addDays(-5), registrar: 'TestReg D02' });
+      dFree = mk('test-d-free.example.nz', 'domain', { billable: 0, price: null, cycle: null, next: null, expiry: addDays(200) });
+      dBilled = mk('test-d-billed.example.nz', 'domain', { price: 35, cycle: 12, next: todayNZ, expiry: addDays(300) });
+      await go(P, 'index.php?page=domains');
+      const all = await P.$$eval('[data-testid=domains-list] a[data-domain]', a => a.map(x => x.dataset.domain));
+      assert(all.length === num(`SELECT COUNT(*) FROM services WHERE kind='domain' AND status IN ('active','pending','suspended')`) || all.length === 500, 'count ' + all.length);
+      assert(!all.includes('test-d-host.example.nz') && all.includes('test-d-soon.example.nz'), 'hosting listed / domain missing');
+      await go(P, 'index.php?page=domains&show=soon'); const soon = await P.$$eval('[data-testid=domains-list] a[data-domain]', a => a.map(x => x.dataset.domain));
+      assert(soon.length === num(`SELECT COUNT(*) FROM services WHERE kind='domain' AND status IN ('active','pending','suspended') AND expiry_date>='${todayNZ}' AND expiry_date<='${addDays(60)}'`) && soon.includes('test-d-soon.example.nz') && !soon.includes('test-d-gone.example.nz'), 'soon filter');
+      assert(await P.locator('a[data-domain="test-d-soon.example.nz"] .end.soon').count() === 1, 'not amber');
+      await go(P, 'index.php?page=domains&show=expired'); assert(await P.locator('a[data-domain="test-d-gone.example.nz"] .end.late').count() === 1, 'expired not red');
+      await go(P, 'index.php?page=domains&show=never'); const nev = await P.$$eval('[data-testid=domains-list] a[data-domain]', a => a.map(x => x.dataset.domain));
+      assert(nev.length === num(`SELECT COUNT(*) FROM services s WHERE kind='domain' AND status IN ('active','pending','suspended') AND billable=1 AND is_internal=0 AND included_in_service_id IS NULL AND NOT EXISTS (SELECT 1 FROM charges g WHERE g.source_kind='service' AND g.source_id=s.id AND g.status<>'void')`) && nev.includes('test-d-billed.example.nz'), 'never-invoiced filter');
+      await go(P, 'index.php?page=domains&reg=' + encodeURIComponent('TestReg D02')); assert((await P.$$('[data-testid=domains-list] a[data-domain]')).length === 2, 'registrar filter');
+    });
+    await test('D03', 'Include a domain in hosting: leaves "No charge, not linked", audited, Undo restores; the hosting\'s Xero description lists it as an Additional Domain; another client\'s hosting is refused', async () => {
+      await go(P, 'index.php?page=domains&show=unlinked'); assert(await P.locator('a[data-domain="test-d-free.example.nz"]').count() === 1, 'not under unlinked');
+      await go(P, 'index.php?page=service&id=' + dFree);
+      assert(await P.locator('[data-testid=include-form]').evaluate(d => d.open), 'include form not offered open');
+      await P.selectOption('#inc-host', String(host)); await clickIn(P, '[data-testid=include-form] button[type=submit]');
+      assert(num(`SELECT COALESCE(included_in_service_id,0) FROM services WHERE id=${dFree}`) === host, 'not included');
+      assert(/included in hosting test-d-host/.test(one(`SELECT summary FROM activity_events WHERE event_kind='service_updated' ORDER BY id DESC LIMIT 1`)), 'not audited');
+      assert(/test-d-host/.test(await P.locator('[data-testid=included-in]').innerText()), 'service page');
+      await go(P, 'index.php?page=domains&show=unlinked'); assert(await P.locator('a[data-domain="test-d-free.example.nz"]').count() === 0, 'still unlinked');
+      await go(P, 'index.php?page=service&id=' + host);
+      assert(/test-d-free\.example\.nz/.test(await P.locator('[data-testid=included-domains]').innerText()) && /Additional Domains: test-d-free\.example\.nz/.test(await P.locator('main').innerText()), 'hosting description');
+      await go(P, 'index.php?page=service&id=' + dFree); await P.locator('[data-testid=include-form] summary').click(); await P.selectOption('#inc-host', ''); await clickIn(P, '[data-testid=include-form] button[type=submit]');
+      await undoClick(P); assert(num(`SELECT COALESCE(included_in_service_id,0) FROM services WHERE id=${dFree}`) === host, 'undo of removal');
+      const foreign = mk('test-d-other-host.example.nz', 'hosting', { client: other });
+      const csrf = await csrfOf(P); await postAndGo(P, 'service-edit.php', { csrf, id: String(dFree), action: 'include', included_in_service_id: String(foreign) });
+      assert(/same client/.test(await P.locator('.alert').innerText()) && num(`SELECT included_in_service_id FROM services WHERE id=${dFree}`) === host, 'foreign hosting accepted');
+    });
+    await test('D04', 'A billed domain included in hosting stops being invoiced on its own: off Pending Invoicing; recording it by a forged key is refused', async () => {
+      await go(P, 'index.php?page=invoicing'); assert((await P.locator('main').innerText()).includes('test-d-billed.example.nz'), 'billed domain not due before');
+      const key = `svc:${dBilled}:${todayNZ}`;
+      await go(P, 'service-edit.php?id=' + dBilled); await P.selectOption('#included_in_service_id', String(host)); await save(P);
+      assert(one(`SELECT CONCAT(billable,'/',included_in_service_id) FROM services WHERE id=${dBilled}`) === '0/' + host, 'not forced to no charge');
+      await go(P, 'index.php?page=invoicing'); const txt = await P.locator('main').innerText();
+      assert(!txt.includes('test-d-billed.example.nz') || /Additional Domains:[^\n]*test-d-billed/.test(txt), 'still due on its own');
+      sql(`UPDATE services SET billable=1 WHERE id=${dBilled}`);   // even if someone ticks "billed" again, an included domain is never invoiced alone
+      const csrf = await csrfOf(P); await postAndGo(P, 'invoice-record.php', { csrf, 'keys[]': key, invoice_number: 'INV-D04', recorded_by: 'Test' });
+      assert(num(`SELECT COUNT(*) FROM charges WHERE xero_invoice_number='INV-D04'`) === 0, 'included domain invoiced');
+      sql(`UPDATE services SET billable=0 WHERE id=${dBilled}`);
+    });
+    await test('D05', 'Domain fields: DNS host, name servers, auto-renew and provider reference save, show on the service page, audited and undoable; a forged auto-renew value is refused', async () => {
+      await go(P, 'service-edit.php?id=' + dSoon);
+      await P.fill('#dns_host', 'Cloudflare'); await P.fill('#nameservers', 'NS1.EXAMPLE.NET, ns2.example.net'); await P.selectOption('#auto_renew', '1'); await P.fill('#provider_ref', 'VP-12345'); await save(P);
+      const r = sql(`SELECT dns_host,nameservers,auto_renew,provider_ref FROM services WHERE id=${dSoon}`)[0];
+      assert(r.join('|') === 'Cloudflare|ns1.example.net, ns2.example.net|1|VP-12345', 'row ' + r);
+      const t = await P.locator('main').innerText(); assert(/Auto-renew\s*Yes/.test(t) && t.includes('Cloudflare') && t.includes('VP-12345'), 'service page');
+      await undoClick(P); assert(num(`SELECT dns_host IS NULL AND provider_ref IS NULL FROM services WHERE id=${dSoon}`) === 1, 'undo');
+      await go(P, 'service-edit.php?id=' + dSoon); await P.evaluate(() => { const s = document.querySelector('#auto_renew'); s.appendChild(new Option('x', '7')); s.value = '7'; }); await save(P);
+      assert(/Auto-renew/.test(await P.locator('.alert').innerText()), 'forged auto-renew accepted');
+    });
+    await test('D06', 'Set-up task: "Start set-up task" makes a task for the client from the checklist template, titled "Set up: <domain>", linked both ways; a second one is refused', async () => {
+      await go(P, 'index.php?page=service&id=' + host);
+      await clickIn(P, '[data-testid=provisioning] button[type=submit]');
+      const tid = num(`SELECT COALESCE(provision_task_id,0) FROM services WHERE id=${host}`); assert(tid, 'not linked');
+      const t = sql(`SELECT client_id,title,domains,status,LEFT(instructions,30) FROM tasks WHERE id=${tid}`)[0];
+      assert(+t[0] === cid && t[1] === 'Set up: test-d-host.example.nz' && t[2] === 'test-d-host.example.nz' && t[3] === 'planned' && /Checklist/.test(t[4]), 'task ' + t);
+      assert(/test-d-host/.test(await P.locator('[data-testid=sets-up]').innerText()), 'task page link');
+      await go(P, 'index.php?page=service&id=' + host); assert(/Set up: test-d-host/.test(await P.locator('[data-testid=provisioning]').innerText()), 'service page link');
+      const csrf = await csrfOf(P); await postAndGo(P, 'service-edit.php', { csrf, id: String(host), action: 'provision', template_id: one(`SELECT id FROM task_templates WHERE title='Set up hosting + domain'`) });
+      assert(num(`SELECT COUNT(*) FROM tasks WHERE title='Set up: test-d-host.example.nz'`) === 1, 'second set-up task made');
+    });
+  }
   /* ================= Today correctness ================= */
   await test('T01', 'Today: no record-count tiles; queue items are real open/due records; backlog count matches database', async () => {
     await go(P, 'index.php?page=today');

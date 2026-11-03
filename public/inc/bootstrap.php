@@ -145,3 +145,4 @@ require_once __DIR__ . '/pricing-module.php';
 require_once __DIR__ . '/billing-lib.php';
 require_once __DIR__ . '/schedule-lib.php';
 require_once __DIR__ . '/materials-lib.php';
+require_once __DIR__ . '/domains-lib.php';

@@ -40,6 +40,7 @@ $hasSignoff = array_key_exists('signed_off_at', $t);
   <?php if ($contact): $cp = trim((string)($contact['mobile'] ?: $contact['phone'])); ?><dt>Contact</dt><dd><?=h($contact['display_name'])?><?php if (telHref($cp)): ?> · <a href="<?=h(telHref($cp))?>"><?=h($cp)?></a><?php endif; ?><?php if (validEmail((string)$contact['email'])): ?> · <a href="mailto:<?=h($contact['email'])?>"><?=h($contact['email'])?></a><?php endif; ?></dd><?php endif; ?>
   <?php if (!empty($t['task_category']) || !empty($t['task_type'])): ?><dt>Category</dt><dd><?=h(implode(' › ', array_filter([(string)$t['task_category'], (string)$t['task_type']])))?></dd><?php endif; ?>
   <?php if (!empty($t['domains'])): ?><dt>Domain(s)</dt><dd><?=h($t['domains'])?></dd><?php endif; ?>
+  <?php foreach (cm_has_domains($pdo) ? allRows($pdo, 'SELECT id, COALESCE(domain,label) name FROM services WHERE provision_task_id=?', [$id]) : [] as $sv): ?><dt>Sets up</dt><dd data-testid="sets-up"><a href="<?=h(route('service', ['id' => $sv['id']]))?>"><?=h($sv['name'])?></a></dd><?php endforeach; ?>
   <?php if (isset($t['queue']) && $t['queue'] !== null && (int)$t['queue'] !== 0): ?><dt>Queue</dt><dd><?=(int)$t['queue']?></dd><?php endif; ?>
 </dl>
 <?php if ($hasSignoff && $closed): ?>
