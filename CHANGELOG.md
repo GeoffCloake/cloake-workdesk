@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.13.0 · build 20261103.2 — 3 November 2026
-**Status: built and tested locally (102/102 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data; your real WHMCS import rehearsed: dry run, import, undo, re-import; installed over v0.12.0 by both database routes). Not yet deployed. Not yet user-confirmed.**
+**Status: deployed to manager-dev 3 Nov 2026 16:50 and user-confirmed (~17:00); WHMCS import batch 1 applied 16:52. Rollback target for v0.14.** Tested locally beforehand: 102/102 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.12.0 by both database routes; real import rehearsed.
 Services & billing — the WHMCS replacement (roadmap v0.13, one release as you asked). **Includes database migration 005** (add-only, reversible) and a separate, undoable WHMCS import.
 
 ### Added — services register
@@ -37,7 +37,7 @@ Services & billing — the WHMCS replacement (roadmap v0.13, one release as you 
 - Creating invoices in Xero (Cathy keys them in); WHMCS invoices/payments history (when you export it); product plans; credentials (Joomla access levels, later).
 
 ## v0.12.0 · build 20261103.1 — 3 November 2026
-**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~15:00). Rollback target for v0.13.0.** Tested locally beforehand: 91/91 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.11.0 by both database routes.
+**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~15:00). Was the rollback target for v0.13.0.** Tested locally beforehand: 91/91 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.11.0 by both database routes.
 Pricing & templates (roadmap v0.12), with progressive billing recorded. **Includes database migration 004** (add-only, reversible). Design approved by you on 3 Nov.
 
 ### Added — pricing module (one panel on enquiries, tasks and task templates)
