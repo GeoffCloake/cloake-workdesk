@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.15.0 · build 20261103.4 — 3 November 2026
-**Status: built and tested locally; first release installed from GitHub with `cm-update v0.15.0`.** Tested: 113/113 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.14.0 through `cm-update` (git route). **No database change.** Rollback target: v0.14.0.
+**Status: deployed to manager-dev 3 Nov 2026 22:05 with `cm-update v0.15.0` (first install from GitHub; backup, swap and verify OK). Browser check by Geoff pending.** Tested: 113/113 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.14.0 through `cm-update` (git route). **No database change.** Rollback target: v0.14.0.
 Simpler screens (your request: "minimal for basic things… step back higher level functions") and the new name.
 
 ### Changed — the app is now **Cloake Workdesk**
