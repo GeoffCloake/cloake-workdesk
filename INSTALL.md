@@ -1,19 +1,25 @@
-# Install v0.16.0 (build 20261103.5) — from GitHub — and how to undo it
+# Install v0.17.0 (build 20261103.6) — from GitHub — then the Xero Demo Company test
 
-**What changes:** application files, plus **database migration 007**: six new columns on `services` (name servers, DNS host, auto-renew, included in, provider reference, set-up task) and one new task template ("Set up hosting + domain"). No existing value is changed.
-Allow 5 minutes.
+**What changes:** application files, plus **database migration 008** (one new column, `charges.xero_invoice_id`). Nothing existing changes, and **nothing talks to Xero until you connect it** (step B).
 
-## Steps (WHM Terminal)
+## A. Install (WHM Terminal, 3 minutes)
 1. `su -s /bin/bash - cloakecrea`
-2. `cm-update v0.16.0`
-   - Dry run first. Expect `Database: migration pending — would apply:` **007_domains_provisioning**, `Dry run complete`.
-   - **Install v0.16.0 now?** → `y`. Expect `Database migration: OK` and `Verified: … v0.16.0 · build 20261103.5`.
-   - **If it stops with "the app's database user may not change table structure":** nothing has changed. phpMyAdmin → `cloakecrea_manager_devt` → **SQL** → paste the whole of the `007_domains_provisioning.apply.sql` file it names → **Go**. Then `cm-update v0.16.0` again.
-3. **Check (5 minutes):**
-   - **More… → Release check**: all passed, including *Migration 007*.
-   - **More… → Domains** → **Billed, never invoiced**: your extra domains. Open one → **Include in a hosting service** → pick its hosting → Save. It leaves Pending Invoicing and shows on the hosting's invoice as an Additional Domain.
-   - On a hosting service: **Start set-up task** (try it on a test client, or skip).
+2. `cm-update v0.17.0` → dry run lists **008_xero_drafts** → `y` → expect `Database migration: OK`, `Verified: … v0.17.0 · build 20261103.6`.
+   - If it stops asking for phpMyAdmin: run the `008_xero_drafts.apply.sql` it names (phpMyAdmin › SQL › Go), then `cm-update v0.17.0` again.
+3. **More… → Release check**: all passed, including *Migration 008*.
+
+## B. Xero test with the Demo Company (10 minutes, when you're ready)
+1. **Demo Company:** in Xero, open your organisation menu → **Demo Company** (start it if asked). It's Xero's practice organisation with made-up data.
+2. **Make the app:** go to **developer.xero.com** → sign in → **My Apps** → **New app**:
+   - App name: `Cloake Workdesk` · Integration type: **Web app** · Company or application URL: `https://cloakecreative.co.nz`
+   - Redirect URI: `https://manager-dev.cloakecreative.co.nz/xero-callback.php` (shown on the Workdesk Xero page too) → tick the terms → **Create app**.
+   - **Configuration** → copy the **Client id**; **Generate a secret** → copy it.
+3. **Workdesk → More… → Xero connection** → paste both → **Save app details** → **Connect to Xero** → Xero asks you to allow access → choose **Demo Company (NZ)** → **Allow access** → **Continue**. It should say *Connected to Demo Company (NZ)*.
+4. **Pending Invoicing** → for one client, tick one line, enter *Recorded by* → **Create Xero draft instead**. It should say *Draft INV-… created in Xero (Demo Company)*.
+5. In Xero (Demo Company) → **Invoices → Draft**: check the draft (line, amount ex GST, account, GST). Then back in Workdesk click **Undo** (it reminds you to delete the draft in Xero) and delete the draft in the Demo Company.
+
+When you're happy, the same steps connect your real organisation (Reconnect / switch organisation). Disconnect at any time on the same page.
 
 ## Undo
-- **The app:** `cm-update v0.15.0`. v0.15.0 works on the migrated database (tested); the new fields are kept for when you reinstall.
-- **Migration 007 itself (only if it went wrong):** `/opt/cpanel/ea-php83/root/usr/bin/php deploy/migrate.php rollback --confirm` in `~/cloake-manager/releases/cloake-workdesk-v0.16.0-build20261103.5/`, or its `.rollback.sql` in phpMyAdmin — removes the six columns and what was entered in them. To restore exactly, import the `db-before-v0.16.0-….sql.gz` backup.
+- **The app:** `cm-update v0.16.0` (works on the migrated database — tested). The Xero connection file stays in the private folder; delete it with `rm ~/cloake-manager/private/xero.json` if you want it gone.
+- **Migration 008 itself:** `deploy/migrate.php rollback --confirm` in the release folder, or its `.rollback.sql` in phpMyAdmin.

@@ -3,8 +3,30 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.17.0 · build 20261103.6 — 3 November 2026
+**Status: built and tested locally (against a local stand-in for Xero — no real Xero call has been made yet).** Tested: 125/125 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.16.0 with `cm-update` by both database routes; v0.16.0's own suite 119/119 after going back. **Includes database migration 008** (add-only, one column).
+Xero draft invoices — test with Xero's **Demo Company** first.
+
+### Added — Xero connection (More… › Billing › Xero connection)
+- Paste your Xero app's **Client id** and **Client secret** (kept in the private folder on the server, outside the website, file readable only by your account; never in the database; never shown again).
+- **Connect to Xero** → Xero's own sign-in and consent → choose the organisation (Demo Company for the test). Uses Xero's current granular permissions: *offline_access accounting.invoices accounting.contacts.read*.
+- The connection renews itself whenever it's used (Xero's 60-day rule); **Disconnect** removes access (and tells Xero to revoke it).
+
+### Added — "Create Xero draft instead" (Pending Invoicing, once connected)
+- Sends the ticked lines of one client to Xero as **one DRAFT invoice** (amounts ex GST, your account codes, due on the period start or today). Xero gives it its number (INV-…), which is recorded here instead of a typed one; services move on a period, as when recording by hand.
+- **Only drafts** — Workdesk never approves, emails or pays. Cathy reviews and approves in Xero › Invoices › Draft.
+- Contact: the client's **Xero contact reference** if it holds a Xero ContactID, else the Xero contact with exactly the client's name. If none matches it stops (so no duplicate contacts are made) — except in the Demo Company, where Xero creates it.
+- If Xero refuses (or can't be reached), **nothing is recorded** here and Xero's reason is shown. **Undo** removes it here and reminds you the draft is still in Xero to delete.
+- Typing the number by hand ("Record invoice for ticked lines") works exactly as before.
+
+### Fixed
+- The double-submit guard disabled the pressed button before the form was sent, so a button's own value was lost (needed for "Create Xero draft instead"). Now kept.
+
+### Database — migration 008 (add-only)
+- charges.xero_invoice_id (Xero's InvoiceID for drafts made from Workdesk).
+
 ## v0.16.0 · build 20261103.5 — 3 November 2026
-**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~22:40, "looks fine").** Tested beforehand: 119/119 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.15.0 with `cm-update` by **both database routes** (installer applies 007 / phpMyAdmin SQL first); v0.15.0's own suite 113/113 after going back with `cm-update v0.15.0`. **Includes database migration 007** (add-only, reversible).
+**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~22:40, "looks fine"). Rollback target for v0.17.0.** Tested beforehand: 119/119 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.15.0 with `cm-update` by **both database routes** (installer applies 007 / phpMyAdmin SQL first); v0.15.0's own suite 113/113 after going back with `cm-update v0.15.0`. **Includes database migration 007** (add-only, reversible).
 Domain register and provisioning (ready for a later Vetta portal sync).
 
 ### Added — Domains (More… › Billing › Domains)
