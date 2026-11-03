@@ -2,8 +2,8 @@
 # Cloake Client & Services Manager — roll back the application files to the
 # version that was live before the last install.sh run.
 #   bash deploy/rollback.sh
-# Application files only. The database is NOT touched (this release made no schema
-# changes; entries created while v0.9.0 was live remain valid for the previous version).
+# Application files only. The database is NOT touched: migrations are add-only, so the previous
+# version keeps working with the migrated database (see INSTALL.md for undoing a migration).
 set -euo pipefail
 LIVE="${CM_LIVE:-/home/cloakecrea/public_html/manager-dev.cloakecreative.co.nz}"
 RELEASES="${CM_RELEASES:-/home/cloakecrea/cloake-manager/releases}"

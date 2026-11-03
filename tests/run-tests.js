@@ -953,7 +953,7 @@ function protectedChecksums() {
     const closedPf = num(`SELECT COUNT(*) FROM tasks t JOIN task_templates x ON x.from_task_id=t.id WHERE t.client_id=${pf} AND (${closed('t.status')} OR t.completed_at IS NOT NULL)`);
     assert(closedPf === 0, 'a closed pro-forma task was copied');
     for (const t of open.filter(t => t[2] === 'set' && +t[3] > 0)) assert(num(`SELECT COUNT(*) FROM breakdown_items b JOIN task_templates x ON x.id=b.template_id WHERE x.from_task_id=${t[0]} AND b.unit_price_ex_gst=${t[3]}`) === 1, 'set fee missing for task ' + t[0]);
-    assert(num(`SELECT COUNT(*) FROM task_templates WHERE instructions REGEXP BINARY 'rn[A-Z]'`) === 0, 'broken "rn" line breaks left in template instructions');
+    assert(!sql(`SELECT COALESCE(instructions,'') FROM task_templates`).some(r => /rn[A-Z]/.test(r[0] || '')), 'broken "rn" line breaks left in template instructions');
     await go(P, 'index.php?page=templates');
     const titles = await P.$$eval('main a.record strong', a => a.map(x => x.textContent));
     assert(open.every(t => titles.includes(t[1])), 'templates page missing some');

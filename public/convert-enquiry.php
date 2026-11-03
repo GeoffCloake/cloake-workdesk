@@ -93,7 +93,7 @@ try {
     $q = $pdo->prepare('SELECT e.*,c.name client_name,k.display_name contact_name,k.email contact_email,k.phone contact_phone,k.mobile contact_mobile FROM enquiries e LEFT JOIN clients c ON c.id=e.client_id LEFT JOIN contacts k ON k.id=e.contact_id WHERE e.id=?');
     $q->execute([$id]); $enquiry = $q->fetch();
     if (!$enquiry) { http_response_code(404); exit('Enquiry not found.'); }
-    $q = $pdo->prepare('SELECT id,title,status,parent_task_id FROM tasks WHERE enquiry_id=? ORDER BY id');
+    $q = $pdo->prepare('SELECT id,title,status,parent_task_id FROM tasks WHERE enquiry_id=? AND parent_task_id IS NULL ORDER BY id');   // stages are listed on their main task
     $q->execute([$id]); $linkedTasks = $q->fetchAll();
     $linkedTask = $linkedTasks[0] ?? null;
     $plans = $plansOf($id);

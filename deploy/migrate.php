@@ -64,8 +64,8 @@ const LEDGER = "CREATE TABLE IF NOT EXISTS schema_migrations (id VARCHAR(80) NOT
 if ($cmd === 'sql') {
     foreach ($migrations as $id => $m) {
         $apply = ["-- Cloake Manager migration $id: {$m['description']}", "-- phpMyAdmin fallback for deploy/migrate.php apply. Back up the database first.", "-- Run ONCE on a database that does not yet have these columns (check: More > Release check).", "", LEDGER . ";"];
-        foreach ($m['columns'] as $t => $cols) if ($cols) $apply[] = addColumnsSql($t, $cols) . ";";
         foreach ($m['tables'] ?? [] as $t => $ddl) $apply[] = $ddl . ";";
+        foreach ($m['columns'] as $t => $cols) if ($cols) $apply[] = addColumnsSql($t, $cols) . ";";
         foreach (backfillSql($m) as $s) $apply[] = $s . ";";
         $apply[] = "INSERT INTO schema_migrations (id,description,applied_at,applied_by) VALUES ('$id','" . addslashes($m['description']) . "',NOW(),'phpMyAdmin');";
         file_put_contents("$dir/$id.apply.sql", implode("\n", $apply) . "\n");
@@ -153,13 +153,14 @@ if ($cmd === 'apply') {
         if (in_array($id, $applied, true)) { echo "  $id — already applied\n"; continue; }
         echo "  $id — {$m['description']}\n";
         try {
-            foreach ($m['columns'] as $t => $cols) {
-                $missing = array_diff_key($cols, array_flip(existingColumns($pdo, $t)));
-                if ($missing) { $pdo->exec(addColumnsSql($t, $missing)); echo "    added " . count($missing) . " columns to $t\n"; }
-            }
+            // New tables first (CREATE TABLE IF NOT EXISTS): if the user may not create tables, nothing has changed yet.
             foreach ($m['tables'] ?? [] as $t => $ddl) {
                 if (tableExists($pdo, $t)) continue;
                 $pdo->exec($ddl); echo "    created table $t\n";
+            }
+            foreach ($m['columns'] as $t => $cols) {
+                $missing = array_diff_key($cols, array_flip(existingColumns($pdo, $t)));
+                if ($missing) { $pdo->exec(addColumnsSql($t, $missing)); echo "    added " . count($missing) . " columns to $t\n"; }
             }
             $pdo->beginTransaction();
             foreach (backfillSql($m) as $s) { $n = $pdo->exec($s); echo "    filled from imported records: " . (int)$n . " rows changed\n"; }

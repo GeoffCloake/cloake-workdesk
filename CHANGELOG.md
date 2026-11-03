@@ -3,8 +3,47 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.12.0 · build 20261103.1 — 3 November 2026
+**Status: built and tested locally (91/91 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data; installed over v0.11.0 by both database routes). Not yet deployed. Not yet user-confirmed.**
+Pricing & templates (roadmap v0.12), with progressive billing recorded. **Includes database migration 004** (add-only, reversible). Design approved by you on 3 Nov.
+
+### Added — pricing module (one panel on enquiries, tasks and task templates)
+- **Price lines:** description × qty × price ex GST, pricing type (set fee / hourly / web service) and an optional account name. As many as needed; edit, move up, remove. Totals ex GST, GST 15% and incl GST.
+- On an **enquiry** (the quote), a line can be **for** the whole job, one of its planned tasks, or one of its tasks. It is the same line that then shows on that task, so the enquiry and the task always agree.
+- Any **task** can have price lines and a billing choice, including imported tasks (their imported record is not changed).
+- **Billing:** on completion (as now), **monthly** (each month end), or **milestones**.
+- **Milestones:** name, amount ex GST **or** % of the price, and when it becomes ready to invoice: when the enquiry is accepted (deposit), when its task is signed off (for the whole job: when all its tasks are), on a date, or when marked ready by hand. Readiness follows the record, so reopening a task or setting an enquiry back puts the milestone back to planned. A ready milestone can only be **voided**, with a reason (and restored).
+- **Pending Invoicing** now lists **milestones ready to invoice** with their amounts. Invoicing them, and the month-end claims, come in v0.13.
+
+### Added — task templates (replace the "Pro forma" client's tasks)
+- **More ▸ Task templates:** title, instructions, category › type, Action for, pricing, chargeable, estimate, plus the template's own price lines and milestones. Archive / restore.
+- Migration 004 **copies every open "Pro forma" task into a template** (10 on your data); a set fee becomes the template's price line ($1,800 Upgrade website, $700 Build new website – Stage 1, $600 Stage 3). Line breaks that Fabrik had turned into "rn" are put back.
+- **Retire pro-forma tasks** (on the templates screen, once you've checked them): sets those tasks to Cancelled and archives the Pro forma client in one step; **Undo** puts them all back.
+- **Make a template from this task** on any task page (copies its price lines and milestones).
+
+### Added — several tasks per enquiry
+- **Planned tasks** on the enquiry: **add from a template** (its price lines and milestones come too) or a blank one; edit or remove before it becomes a task.
+- **Create tasks:** tick the planned tasks to create; each becomes its own task with its own price lines and milestones. The rest can be created later. Re-posting never makes a second task (row lock + unique key, tested with 6 sessions at once).
+- An enquiry **without** planned tasks still becomes one task as before; its whole-job price lines and milestones go with it.
+- **Quick Enquiry:** optional **Start from a template** (fills the title; adds it as a planned task).
+
+### Added — task stages
+- **Break out into stages** (up to 3 at once) or **Extend — add a stage**. Each stage is its own task (Work Log, sign-off, pricing), copying the client, contact, enquiry, category, Action for and required date. One level only.
+- A task with open stages **can't be signed off or completed** until its stages are completed or cancelled (it can still be cancelled). Stages show on the main task and in the Tasks list ("Stage n").
+
+### Changed
+- Undo also covers price-line, milestone, template and planned-task edits, the billing choice, and retiring the pro-forma tasks.
+- The enquiry page shows planned tasks, the pricing panel and all linked tasks. The task page's old "Pricing & billing" fields are now "Recorded pricing fields" (unchanged).
+- Migration runner: can create tables; creates them before adding columns; a database user without CREATE/ALTER gets the phpMyAdmin route.
+
+### Database — migration 004 (`deploy/migrations/004_pricing_templates.*`)
+- New tables `task_templates`, `enquiry_task_plans`, `billing_milestones`. New columns: `breakdown_items` template_id, plan_id, line_order, account_name, created_at, updated_at; `enquiries.billing_mode`; `tasks` billing_mode, parent_task_id, stage_no. Copies the open pro-forma tasks into templates and verifies the copy. No existing column or value is changed; v0.11.0 runs normally on the migrated database (tested).
+
+### Not in this release (planned)
+- v0.13: services register and WHMCS import, Pending Invoicing for Cathy (renewals, milestones, month-end claims; Xero invoice numbers recorded), charges from the Work Log.
+
 ## v0.11.0 · build 20261101.1 — 1 November 2026
-**Status: built and tested locally (74/74 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data). Not yet deployed. Not yet user-confirmed.**
+**Status: deployed to manager-dev and user-confirmed (reported 3 Nov 2026). Rollback target for v0.12.0.** Tested locally beforehand: 75/75 tests on MySQL 8.0.46 (real-data replica) and MariaDB.
 First release of the enquiry-to-invoice roadmap (your 20 points, 1 Nov). **Includes database migration 003** (add-only, reversible).
 
 ### Added — enquiries
@@ -37,7 +76,7 @@ First release of the enquiry-to-invoice roadmap (your 20 points, 1 Nov). **Inclu
 - Description pre-fill comes with project templates (v0.12), as do several price lines, several tasks per enquiry, and task stages.
 
 ## v0.10.0 · build 20261031.2 — 31 October 2026
-**Status: deployed to manager-dev 1 Nov 2026 ~11:40 with installer revision 2, and user-confirmed 11:49. Rollback target for v0.11.0.** Tested locally beforehand: 62/62 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data.
+**Status: deployed to manager-dev 1 Nov 2026 ~11:40 with installer revision 2, and user-confirmed 11:49. Was the rollback target for v0.11.0.** Tested locally beforehand: 62/62 tests on MySQL 8.0.46 and MariaDB, real-data replica and synthetic data.
 Editing, to the rules you approved on 31 October. **Includes database migrations 001 and 002** (add-only, reversible; see below).
 
 ### Added — from your Fabrik forms (build 2)
