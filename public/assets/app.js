@@ -439,6 +439,9 @@
       if (e.defaultPrevented) return;
       if (f.getAttribute('data-submitting')) { e.preventDefault(); return; }
       f.setAttribute('data-submitting', '1');
+      // v0.17: a disabled button is left out of what the form sends — keep a named button's value (e.g. "Create Xero draft").
+      var sb = e.submitter;
+      if (sb && sb.name) f.appendChild(el('input', { type: 'hidden', name: sb.name, value: sb.value }));
       $$('button[type="submit"], button:not([type])', f).forEach(function (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); b.textContent = 'Please wait…'; });
     });
   });

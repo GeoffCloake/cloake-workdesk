@@ -23,7 +23,10 @@ $recent = $hasBilling ? allRows($pdo, "SELECT g.xero_invoice_number, g.recorded_
 $kindTag = ['service' => 'Renewal', 'milestone' => 'Milestone', 'task_fee' => 'Task', 'claim' => 'Month-end claim', 'material' => 'Material', 'progress' => 'Progress claim', 'manual' => 'Charge'];
 ?>
 <p class="lead">Invoice these in Xero, then record the Xero invoice number here. Renewals show <?=$lead?> weeks before their period starts. Amounts are ex GST.</p>
-<?php if (isset($_GET['recorded']) && !cm_undo_pending()): ?><div class="success" role="status">Invoice <?=h($_GET['recorded'])?> recorded.</div><?php endif; ?>
+<?php $xeroOn = cm_xero_state() === 'connected'; $xeroName = $xeroOn ? (string)(cm_xero_load()['tenant_name'] ?? '') : ''; ?>
+<?php if (isset($_GET['recorded']) && !empty($_GET['draft'])): ?><div class="success" role="status" data-testid="draft-made">Draft <?=h($_GET['recorded'])?> created in Xero (<?=h($xeroName)?>) and recorded here. Cathy: review and approve it in Xero › Invoices › Draft.</div>
+<?php elseif (isset($_GET['recorded']) && !cm_undo_pending()): ?><div class="success" role="status">Invoice <?=h($_GET['recorded'])?> recorded.</div><?php endif; ?>
+<?php if ($xeroOn): ?><p class="small muted" data-testid="xero-on">Xero: connected to <strong><?=h($xeroName)?></strong><?=cm_xero_is_demo(cm_xero_load()) ? ' (Demo Company — test)' : ''?>. <a href="xero.php">Xero connection</a></p><?php endif; ?>
 <?php if ($err): ?><div class="alert" role="alert"><?=h($err['msg'])?></div><?php endif; ?>
 <?php if (!$hasBilling): ?><div class="notice">Billing tables are not installed yet (migration 005).</div><?php endif; ?>
 <div class="client-summary" data-testid="pending-summary">
@@ -46,7 +49,8 @@ $kindTag = ['service' => 'Renewal', 'milestone' => 'Milestone', 'task_fee' => 'T
 <?php endforeach; ?></ul>
 <div class="pair"><div class="field"><label for="inv-<?=(int)$cid?>">Xero invoice number</label><input id="inv-<?=(int)$cid?>" name="invoice_number" maxlength="40" required placeholder="INV-0000" value="<?=h($err && $err['keys'] && in_array($list[0]['key'], $err['keys'], true) ? $err['inv'] : '')?>"></div>
 <div class="field"><label for="by-<?=(int)$cid?>">Recorded by</label><input id="by-<?=(int)$cid?>" name="recorded_by" maxlength="100" required value="<?=h((string)($_SESSION['cm_last_staff'] ?? ''))?>"></div></div>
-<div class="form-actions"><button type="submit" class="secondary">Record invoice for ticked lines</button></div></form></section>
+<div class="form-actions"><button type="submit" class="secondary">Record invoice for ticked lines</button><?php if ($xeroOn): ?><button type="submit" name="xero_draft" value="1" formnovalidate class="secondary" data-testid="xero-draft">Create Xero draft instead</button><?php endif; ?></div>
+<?php if ($xeroOn): ?><p class="helper">“Create Xero draft” sends the ticked lines to Xero as one <strong>draft</strong> (no number needed — Xero gives it one). Only “Recorded by” is needed.</p><?php endif; ?></form></section>
 <?php endforeach; ?>
 <?php if ($recent): ?><details><summary>Recently recorded (<?=count($recent)?>)</summary><div class="stack compact-list"><?php foreach ($recent as $r): ?><div class="record"><span><strong><?=h($r['xero_invoice_number'])?> · <?=h($r['client_name'] ?? '')?></strong><small><?=(int)$r['n']?> line<?=(int)$r['n'] === 1 ? '' : 's'?> · <?=h($r['recorded_by'])?> · <?=h(niceDate($r['at']))?></small></span><span class="end"><?=h(cm_money($r['total']))?></span></div><?php endforeach; ?></div></details><?php endif; ?>
 <?php

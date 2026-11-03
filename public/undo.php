@@ -37,8 +37,11 @@ try {
             $pdo->exec("DELETE FROM charges WHERE status='invoiced' AND id IN (" . implode(',', $ids) . ')');
         }
         foreach (array_map('intval', $iv['claims'] ?? []) as $cid) $pdo->prepare("UPDATE charges SET status='pending', xero_invoice_number=NULL, recorded_by=NULL, recorded_at=NULL, updated_at=NOW() WHERE id=? AND status='invoiced'")->execute([$cid]);
+        if (!empty($iv['xero_invoice_id']) && $iv['claims']) $pdo->exec('UPDATE charges SET xero_invoice_id=NULL WHERE id IN (' . implode(',', array_map('intval', $iv['claims'])) . ')');
         cm_audit($pdo, 'invoice_unrecorded', ['client_id' => $ev['client_id']], 'Undo: ' . $ev['summary'], ['invoice' => $iv]);
         $pdo->commit();
+        // v0.17: Workdesk never deletes in Xero — the draft it made stays there until someone deletes it.
+        if (!empty($iv['xero_invoice_id'])) $_SESSION['cm_invoice_error'] = ['msg' => 'Undone here. The Xero draft ' . ($iv['invoice_number'] ?? '') . ' is still in Xero — delete it there (Invoices › Draft).', 'keys' => [], 'inv' => ''];
         header('Location: ' . route('invoicing'), true, 303); exit;
     }
     // Several rows at once (v0.12, e.g. retiring the pro-forma tasks): all or nothing.

@@ -19,6 +19,7 @@ $groups = [
         [route('domains'), 'Domains', 'Every domain: expiry, registrar, DNS, auto-renew, and which hosting it is included in'],
         ['claims.php', 'Month-end claims', 'Hours and progress claims for monthly-billed tasks'],
         ['billing-settings.php', 'Billing settings', 'Lead time, Xero accounts, hourly rate, materials markup'],
+        ['xero.php', 'Xero connection', 'Create draft invoices in Xero from Pending Invoicing'],
         [route('items'), 'Account Items', 'Rates and catalogue'],
     ],
     'System' => [

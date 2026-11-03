@@ -1,0 +1,165 @@
+<?php
+declare(strict_types=1);
+/*
+ * Xero draft invoices (v0.17) — OAuth 2.0 connection and the one write Workdesk makes: a DRAFT sales invoice.
+ *
+ *  - The Xero app's client ID / secret and the tokens live in private/xero.json (next to config.php, outside the
+ *    web root, mode 600) — never in the database, never shown back on screen.
+ *  - Scopes: offline_access accounting.invoices accounting.contacts.read (granular scopes; apps made since March 2026
+ *    cannot use the old broad ones). Override with 'xero_scopes' in config.php if Xero changes them again.
+ *  - The only status ever sent is DRAFT (cm_xero_create_draft refuses anything else). Nothing is approved, emailed or paid.
+ *  - Contact: the client's "Xero contact reference" if it is a Xero ContactID, else an exact name match in Xero.
+ *    No match → refused (so no duplicate contacts are made) — except in Xero's Demo Company, where the name is sent
+ *    and Xero creates the contact, so the test can run against made-up data.
+ *  - Test endpoints can be set with 'xero_endpoints' in config.php (used only by the automated tests).
+ */
+if (PHP_SAPI !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === basename(__FILE__)) { http_response_code(404); exit; }
+
+const CM_XERO_SCOPES = 'offline_access accounting.invoices accounting.contacts.read';
+
+function cm_xero_file(): string { return dirname(CLOAKE_CONFIG_FILE) . '/xero.json'; }
+
+function cm_xero_endpoints(): array
+{
+    $e = cm_config()['xero_endpoints'] ?? [];
+    return [
+        'authorize' => $e['authorize'] ?? 'https://login.xero.com/identity/connect/authorize',
+        'token' => $e['token'] ?? 'https://identity.xero.com/connect/token',
+        'revoke' => $e['revoke'] ?? 'https://identity.xero.com/connect/revocation',
+        'connections' => $e['connections'] ?? 'https://api.xero.com/connections',
+        'api' => rtrim($e['api'] ?? 'https://api.xero.com/api.xro/2.0', '/'),
+    ];
+}
+
+function cm_xero_load(): array
+{
+    $f = cm_xero_file();
+    if (!is_file($f)) return [];
+    $d = json_decode((string)file_get_contents($f), true);
+    return is_array($d) ? $d : [];
+}
+
+function cm_xero_save(array $d): void
+{
+    $f = cm_xero_file(); $tmp = $f . '.tmp' . bin2hex(random_bytes(4));
+    $old = umask(0077);
+    try {
+        if (file_put_contents($tmp, json_encode($d, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX) === false) throw new RuntimeException('Could not write the Xero settings file.');
+        chmod($tmp, 0600);
+        rename($tmp, $f);
+    } finally { umask($old); if (is_file($tmp)) @unlink($tmp); }
+}
+
+function cm_xero_redirect_uri(): string
+{
+    $c = cm_config();
+    if (!empty($c['xero_redirect_uri'])) return (string)$c['xero_redirect_uri'];
+    $host = (string)($_SERVER['HTTP_HOST'] ?? 'manager-dev.cloakecreative.co.nz');
+    $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
+    return 'https://' . $host . $dir . '/xero-callback.php';
+}
+
+/** 'none' (no app saved) | 'app' (app saved, not connected) | 'connected' */
+function cm_xero_state(?array $x = null): string
+{
+    $x ??= cm_xero_load();
+    if (empty($x['client_id']) || empty($x['client_secret'])) return 'none';
+    return !empty($x['refresh_token']) && !empty($x['tenant_id']) ? 'connected' : 'app';
+}
+
+function cm_xero_is_demo(array $x): bool { return (bool)preg_match('/demo company/i', (string)($x['tenant_name'] ?? '')); }
+
+/** Minimal HTTPS call. Returns [status, decoded body|null, raw]. */
+function cm_xero_http(string $method, string $url, array $headers = [], ?string $body = null): array
+{
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_HTTPHEADER => $headers, CURLOPT_TIMEOUT => 25, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_PROTOCOLS => empty(cm_config()['xero_endpoints']) ? CURLPROTO_HTTPS : (CURLPROTO_HTTPS | CURLPROTO_HTTP)]);
+    if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    $raw = curl_exec($ch);
+    if ($raw === false) { $e = curl_error($ch); curl_close($ch); throw new RuntimeException('Could not reach Xero (' . $e . '). Nothing was created.'); }
+    $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+    return [$status, json_decode((string)$raw, true), (string)$raw];
+}
+
+function cm_xero_basic(array $x): string { return 'Authorization: Basic ' . base64_encode($x['client_id'] . ':' . $x['client_secret']); }
+
+/** Exchange the authorisation code (callback). Stores tokens and the organisations this connection can reach. */
+function cm_xero_exchange_code(array $x, string $code): array
+{
+    [$st, $j] = cm_xero_http('POST', cm_xero_endpoints()['token'], [cm_xero_basic($x), 'Content-Type: application/x-www-form-urlencoded'],
+        http_build_query(['grant_type' => 'authorization_code', 'code' => $code, 'redirect_uri' => cm_xero_redirect_uri()]));
+    if ($st !== 200 || empty($j['refresh_token'])) throw new RuntimeException('Xero did not accept the connection (' . ($j['error'] ?? $st) . ').');
+    $x = cm_xero_store_tokens($x, $j);
+    [$st, $conns] = cm_xero_http('GET', cm_xero_endpoints()['connections'], ['Authorization: Bearer ' . $x['access_token'], 'Accept: application/json']);
+    if ($st !== 200 || !is_array($conns)) throw new RuntimeException('Connected, but Xero did not list the organisations (' . $st . ').');
+    $x['tenants'] = array_values(array_map(fn($c) => ['id' => (string)$c['tenantId'], 'name' => (string)($c['tenantName'] ?? ''), 'type' => (string)($c['tenantType'] ?? '')], array_filter($conns, fn($c) => ($c['tenantType'] ?? 'ORGANISATION') === 'ORGANISATION')));
+    if (count($x['tenants']) === 1) { $x['tenant_id'] = $x['tenants'][0]['id']; $x['tenant_name'] = $x['tenants'][0]['name']; }
+    else unset($x['tenant_id'], $x['tenant_name']);
+    $x['connected_at'] = date('Y-m-d H:i:s');
+    return $x;
+}
+
+function cm_xero_store_tokens(array $x, array $j): array
+{
+    $x['access_token'] = (string)$j['access_token'];
+    if (!empty($j['refresh_token'])) $x['refresh_token'] = (string)$j['refresh_token'];   // Xero rotates the refresh token on every use
+    $x['expires_at'] = time() + max(60, (int)($j['expires_in'] ?? 1800)) - 60;
+    return $x;
+}
+
+/** A valid access token (refreshing and saving the rotated refresh token when needed). */
+function cm_xero_token(array &$x): string
+{
+    if (!empty($x['access_token']) && (int)($x['expires_at'] ?? 0) > time()) return (string)$x['access_token'];
+    [$st, $j] = cm_xero_http('POST', cm_xero_endpoints()['token'], [cm_xero_basic($x), 'Content-Type: application/x-www-form-urlencoded'],
+        http_build_query(['grant_type' => 'refresh_token', 'refresh_token' => (string)($x['refresh_token'] ?? '')]));
+    if ($st !== 200 || empty($j['access_token'])) {
+        if (($j['error'] ?? '') === 'invalid_grant') { unset($x['access_token'], $x['refresh_token']); cm_xero_save($x); throw new RuntimeException('The Xero connection has expired (not used for 60 days, or disconnected in Xero). Connect again on More › Xero connection.'); }
+        throw new RuntimeException('Xero did not renew the connection (' . ($j['error'] ?? $st) . '). Nothing was created.');
+    }
+    $x = cm_xero_store_tokens($x, $j); cm_xero_save($x);
+    return (string)$x['access_token'];
+}
+
+function cm_xero_api(array &$x, string $method, string $path, ?array $body = null): array
+{
+    $h = ['Authorization: Bearer ' . cm_xero_token($x), 'xero-tenant-id: ' . $x['tenant_id'], 'Accept: application/json'];
+    if ($body !== null) $h[] = 'Content-Type: application/json';
+    return cm_xero_http($method, cm_xero_endpoints()['api'] . $path, $h, $body !== null ? json_encode($body) : null);
+}
+
+/** The Xero contact to invoice: ['ContactID' => …] or (Demo Company only) ['Name' => …]. */
+function cm_xero_contact(array &$x, array $client): array
+{
+    $ref = trim((string)($client['xero_contact_id'] ?? ''));
+    if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $ref)) return ['ContactID' => strtolower($ref)];
+    $name = trim((string)$client['name']);
+    [$st, $j] = cm_xero_api($x, 'GET', '/Contacts?where=' . rawurlencode('Name=="' . str_replace('"', '\"', $name) . '"') . '&summaryOnly=true');
+    if ($st !== 200) throw new RuntimeException('Could not look up the contact in Xero (' . $st . '). Nothing was created.');
+    $found = array_values(array_filter($j['Contacts'] ?? [], fn($c) => ($c['ContactStatus'] ?? 'ACTIVE') !== 'ARCHIVED'));
+    if (count($found) === 1) return ['ContactID' => (string)$found[0]['ContactID']];
+    if (count($found) > 1) throw new RuntimeException('More than one Xero contact is called “' . $name . '”. Put the right ContactID in the client’s Xero contact reference.');
+    if (cm_xero_is_demo($x)) return ['Name' => $name];
+    throw new RuntimeException('No Xero contact is called “' . $name . '”. Put its Xero ContactID in the client’s Xero contact reference (Edit client › Notes, credit & Xero reference), or rename to match. Nothing was created.');
+}
+
+/**
+ * Create ONE draft sales invoice. $lines: [['description','amount' (ex GST),'account']].
+ * Returns ['id' => InvoiceID, 'number' => InvoiceNumber, 'url' => link to open it in Xero].
+ */
+function cm_xero_create_draft(array &$x, array $client, array $lines, string $dueDate, string $reference = ''): array
+{
+    if (cm_xero_state($x) !== 'connected') throw new RuntimeException('Xero is not connected. Set it up on More › Xero connection.');
+    $inv = ['Type' => 'ACCREC', 'Status' => 'DRAFT', 'LineAmountTypes' => 'Exclusive', 'Contact' => cm_xero_contact($x, $client),
+        'Date' => date('Y-m-d'), 'DueDate' => $dueDate, 'Reference' => mb_substr($reference, 0, 255),
+        'LineItems' => array_map(fn($l) => array_filter(['Description' => (string)$l['description'], 'Quantity' => 1, 'UnitAmount' => round((float)$l['amount'], 2), 'AccountCode' => (string)($l['account'] ?? '')], fn($v) => $v !== ''), $lines)];
+    if ($inv['Status'] !== 'DRAFT') throw new LogicException('Only drafts may be created.');
+    [$st, $j, $raw] = cm_xero_api($x, 'POST', '/Invoices?summarizeErrors=true', ['Invoices' => [$inv]]);
+    $out = $j['Invoices'][0] ?? null;
+    if ($st !== 200 || !$out || empty($out['InvoiceID'])) {
+        $msg = $j['Elements'][0]['ValidationErrors'][0]['Message'] ?? ($j['Message'] ?? ('HTTP ' . $st));
+        throw new RuntimeException('Xero did not create the draft: ' . $msg . '. Nothing was recorded.');
+    }
+    if (strtoupper((string)($out['Status'] ?? 'DRAFT')) !== 'DRAFT') throw new RuntimeException('Xero returned the invoice with status ' . $out['Status'] . ' — check it in Xero.');
+    return ['id' => (string)$out['InvoiceID'], 'number' => (string)($out['InvoiceNumber'] ?? ''), 'url' => 'https://go.xero.com/AccountsReceivable/Edit.aspx?InvoiceID=' . rawurlencode((string)$out['InvoiceID'])];
+}

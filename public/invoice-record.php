@@ -7,7 +7,8 @@ declare(strict_types=1);
  * One charges row per line, status invoiced, with the number, who and when. A service moves on to its next period;
  * a task fee ties the task's unbilled hours to the charge. One audit event (invoice_recorded) — undoable: it removes
  * those charges, puts claims back to pending, and puts the services' previous dates back (if unchanged since).
- * Nothing is sent to Xero.
+ * v0.17: with xero_draft=1 the ticked lines are sent to Xero as ONE DRAFT invoice first (needs the Xero connection);
+ * the number Xero gives it is recorded instead of a typed one. Xero failure → nothing recorded. Never approved or sent.
  */
 require __DIR__ . '/inc/bootstrap.php';
 cm_require_login();
@@ -19,6 +20,8 @@ $amounts = is_array($_POST['amount'] ?? null) ? $_POST['amount'] : [];
 $back = route('invoicing');
 try {
     $inv = cm_post('invoice_number', 40); $by = cm_post('recorded_by', 100);
+    $draft = !empty($_POST['xero_draft']);
+    if ($draft) { $inv = 'XERO-DRAFT-PENDING'; $xero = cm_xero_load(); if (cm_xero_state($xero) !== 'connected') throw new InvalidArgumentException('Xero is not connected. Set it up on More › Xero connection, or type the invoice number instead.'); }
     if (!$keys) throw new InvalidArgumentException('Tick the lines that are on this Xero invoice.');
     if ($inv === '') throw new InvalidArgumentException('Enter the Xero invoice number.');
     if ($by === '') throw new InvalidArgumentException('Enter your name (who recorded it).');
@@ -89,11 +92,22 @@ try {
         $lines++;
     }
     $cname = (string)(oneRow($pdo, 'SELECT name FROM clients WHERE id=?', [$client])['name'] ?? '');
-    cm_audit($pdo, 'invoice_recorded', ['client_id' => $client], "Invoice $inv recorded for $cname by $by: $lines line" . ($lines === 1 ? '' : 's') . ', ' . cm_money($total) . ' ex GST',
-        ['_invoice' => ['created' => $created, 'claims' => $claims, 'services' => $svcDates, 'work' => $work, 'invoice_number' => $inv]]);
+    $xid = null;
+    if ($draft) {
+        $all = array_merge($created, $claims);
+        $lines = allRows($pdo, 'SELECT description, amount_ex_gst amount, xero_account account, period_start FROM charges WHERE id IN (' . implode(',', array_map('intval', $all)) . ') ORDER BY id');
+        $due = max(date('Y-m-d'), (string)min(array_column($lines, 'period_start')));
+        $crow = oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$client]) ?: ['name' => $cname];
+        try { $made = cm_xero_create_draft($xero, $crow, $lines, $due); } catch (RuntimeException $e) { throw new InvalidArgumentException($e->getMessage()); }
+        $inv = $made['number'] !== '' ? $made['number'] : 'DRAFT ' . substr($made['id'], 0, 8); $xid = $made['id'];
+        $pdo->prepare('UPDATE charges SET xero_invoice_number=?, xero_invoice_id=? WHERE id IN (' . implode(',', array_map('intval', $all)) . ')')->execute([$inv, $xid]);
+    }
+    $n = count($keys);
+    cm_audit($pdo, 'invoice_recorded', ['client_id' => $client], ($xid ? "Xero draft $inv created" : "Invoice $inv recorded") . " for $cname by $by: $n line" . ($n === 1 ? '' : 's') . ', ' . cm_money($total) . ' ex GST',
+        ['_invoice' => ['created' => $created, 'claims' => $claims, 'services' => $svcDates, 'work' => $work, 'invoice_number' => $inv, 'xero_invoice_id' => $xid]]);
     $_SESSION['cm_last_staff'] = $by;
     $pdo->commit();
-    header('Location: ' . $back . '&recorded=' . rawurlencode($inv), true, 303); exit;
+    header('Location: ' . $back . '&recorded=' . rawurlencode($inv) . ($xid ? '&draft=1' : ''), true, 303); exit;
 } catch (Throwable $e) {
     $_SESSION['cm_invoice_error'] = ['msg' => cm_edit_error($e, $pdo, 'invoice record'), 'keys' => $keys, 'inv' => (string)($_POST['invoice_number'] ?? '')];
     header('Location: ' . $back, true, 303); exit;
