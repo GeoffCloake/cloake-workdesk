@@ -4,7 +4,7 @@ Versions are shown on every screen (header) and on the sign-in page as `v<versio
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
 ## v0.14.0 · build 20261103.3 — 3 November 2026
-**Status: built and tested locally (111/111 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data; installed over v0.13.0 by both database routes, including on a copy with your WHMCS import). Not yet deployed. Not yet user-confirmed.**
+**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~19:25). Rollback target for the next release.** Tested locally beforehand: 111/111 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.13.0 by both database routes.
 Scheduling & materials (roadmap v0.14, your points 19 and 20) and the desktop sidebar gap you found. **Includes database migration 006** (add-only, reversible).
 
 ### Added — Workload (who is doing what, and when)
