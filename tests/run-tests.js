@@ -1323,9 +1323,9 @@ function protectedChecksums() {
     const r3 = php('apply', '--dir', WH, '--by', 'Test R11'); assert(r3.ok, 'reimport failed');
   });
   /* ================= v0.14: scheduling, staff, materials, sidebar ================= */
-  const staffOn = sql(`SELECT name FROM staff WHERE active=1 ORDER BY name`).map(r => r[0]);
-  const who1 = staffOn[0], who2 = staffOn[1];
   const openFor = name => +one(`SELECT id FROM tasks t WHERE CONCAT(',',REPLACE(LOWER(COALESCE(t.assigned_to,'')),' ',''),',') LIKE '%,${esc(name)},%' AND NOT (${closed('t.status')}) AND t.completed_at IS NULL AND t.scheduled_on IS NULL AND (t.source_system<>'fabrik' OR t.required_by IS NULL OR t.required_by >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)) ORDER BY t.id DESC LIMIT 1`);
+  const staffOn = sql(`SELECT name FROM staff WHERE active=1 ORDER BY name`).map(r => r[0]);
+  const who1 = staffOn.find(n => openFor(n)) || staffOn[0], who2 = staffOn.find(n => n !== who1);   // someone with open work to schedule
   const dPlus = n => nzDate(n);
   let kTask = 0;
   await test('K01', 'Staff & hours: people seeded from "Action for"; hours per weekday saved (7.5 h = 450 min), audited, Undo restores; a new person can be added; switched-off people leave the Workload', async () => {
