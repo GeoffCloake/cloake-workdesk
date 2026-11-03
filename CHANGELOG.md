@@ -3,8 +3,33 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.14.0 · build 20261103.3 — 3 November 2026
+**Status: built and tested locally (111/111 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data; installed over v0.13.0 by both database routes, including on a copy with your WHMCS import). Not yet deployed. Not yet user-confirmed.**
+Scheduling & materials (roadmap v0.14, your points 19 and 20) and the desktop sidebar gap you found. **Includes database migration 006** (add-only, reversible).
+
+### Added — Workload (who is doing what, and when)
+- **Workload** (sidebar, and More on a phone): a section per person with the days ahead, each with the tasks and stages scheduled for them and the time booked against their hours that day (shown red when over). **Overdue on the schedule** and **Not scheduled** lists alongside. Filters: from date, 1/2/4 weeks, one person.
+- **Drag a card** to another day, another person, or "Not scheduled" (computer). **Move** on each card opens a form for phones: day, time booked (blank = the estimate), person.
+- Moving to another person replaces that person in Action for (others stay). Every move is an audited task update — **Undo** puts it back. Works for imported tasks too (scheduling is a workload field). Closed tasks can't be scheduled.
+- Booked time = the time set when scheduling, else the task's estimate.
+
+### Added — Staff & hours
+- The people on the schedule (seeded from the names used in Action for: those with an open task or a task in the last 12 months start switched on), the name they're shown as, and the hours available each weekday (6 h Mon–Fri to start). Add people; switch people off (never deleted). Audited; hours changes can be undone.
+
+### Added — Materials
+- **Materials** panel on each task: item, supplier and order no, qty, cost and sell price each (ex GST), ordered / received / cancelled; totals and margin.
+- Sell price defaults to cost + the **materials markup %** in Billing settings (blank = at cost); type a different price to override.
+- **Received** items appear on **Pending Invoicing** as "Material" lines, invoiced like any other line (one INV number for ticked lines); each is charged once, and an invoiced item is locked until that invoice is undone.
+- Cancelling needs a reason; an item entered by mistake can be deleted while still only ordered.
+
+### Fixed
+- **Desktop sidebar** now reaches Workload, **Month-end claims**, **Billing settings**, **Staff & hours** and **More…** (they were only on the phone's More list).
+
+### Database — migration 006 (`deploy/migrations/006_schedule_materials.*`)
+- New columns `tasks.scheduled_on`, `tasks.scheduled_minutes`; new tables `staff` (seeded) and `job_items`; settings `material_markup_pct` (blank) and `work_day_minutes` (360). No existing column or value is changed; v0.13.0 runs normally on the migrated database (tested).
+
 ## v0.13.0 · build 20261103.2 — 3 November 2026
-**Status: deployed to manager-dev 3 Nov 2026 16:50 and user-confirmed (~17:00); WHMCS import batch 1 applied 16:52. Rollback target for v0.14.** Tested locally beforehand: 102/102 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.12.0 by both database routes; real import rehearsed.
+**Status: deployed to manager-dev 3 Nov 2026 16:50 and user-confirmed (~17:00); WHMCS import batch 1 applied 16:52. Rollback target for v0.14.0.** Tested locally beforehand: 102/102 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.12.0 by both database routes; real import rehearsed.
 Services & billing — the WHMCS replacement (roadmap v0.13, one release as you asked). **Includes database migration 005** (add-only, reversible) and a separate, undoable WHMCS import.
 
 ### Added — services register

@@ -1,50 +1,41 @@
-# Test report — v0.13.0 · build 20261103.2
+# Test report — v0.14.0 · build 20261103.3
 
-**Result: 102 of 102 tests passed** on your real-data replica (MySQL 8.0.46) and on synthetic data (MariaDB 10.11), and on a copy installed by `deploy/install.sh` over v0.12.0 by **both database routes**. Your **real WHMCS import** was rehearsed end to end (dry run, import, undo, re-import, duplicate refused, undo refused while an invoice depends on it). Zero PHP warnings, zero security-policy violations and zero JavaScript errors in every run.
+**Result: 111 of 111 tests passed** on your real-data replica (MySQL 8.0.46) and on synthetic data (MariaDB 10.11), and on a copy installed by `deploy/install.sh` over v0.13.0 by **both database routes**. Zero PHP warnings, zero security-policy violations and zero JavaScript errors in every run.
 Run in a private workspace, **not** on your server. Deployed / user-confirmed status: pending.
 
 ## 1. Runs
 | Database | Data | Code under test | Result |
 |---|---|---|---|
-| MariaDB 10.11 | Synthetic fixture + synthetic WHMCS files, migrations 001–005 | dev tree | **102/102** |
-| MySQL 8.0.46 | Real-data replica, migrations 001–005 | dev tree | **102/102** |
-| MySQL 8.0.46 | Real-data replica at the server's state (v0.12.0 live, 001–004); 005 via the **phpMyAdmin SQL file** | **installed by deploy/install.sh** over v0.12.0 | **102/102** |
-| MySQL 8.0.46 | Same; 005 applied **automatically** by the installer; then **your real WHMCS import** with the installed tool | installed copy | **96/96** of the tests that don't load their own synthetic WHMCS files (R01–R05 and R11 need empty services/archive tables; they pass on the fresh copies above) |
-| MySQL 8.0.46 | Real data with 005 applied | **v0.12.0 after `deploy/rollback.sh`** — v0.12.0's own suite | **91/91** |
+| MariaDB 10.11 | Synthetic fixture, migrations 001–006 | dev tree | **111/111** |
+| MySQL 8.0.46 | Real-data replica, migrations 001–006 | dev tree | **111/111** |
+| MySQL 8.0.46 | Your server's state (v0.13.0 live, 001–005, **your WHMCS import batch 1**); 006 via the **phpMyAdmin SQL file** | **installed by deploy/install.sh** over v0.13.0 | **105/111** — all but R01–R05 and R11, which load their own synthetic WHMCS files and need empty services/archive tables (as in the v0.13 report); every v0.14 test passed with your imported data present |
+| MySQL 8.0.46 | Real data, v0.13.0 live, 006 applied **automatically** by the installer | installed copy (final package) | **111/111** |
+| MySQL 8.0.46 | Real data with 006 applied | **v0.13.0 after `deploy/rollback.sh`** — v0.13.0's own suite | **102/102** |
 
-## 2. New in this release (11 tests; the 91 from v0.12.0 still pass)
+## 2. New in this release (9 tests; the 102 from v0.13.0 still pass)
 | ID | Proven |
 |---|---|
-| R01 | WHMCS import (synthetic files): dry run changes nothing; apply archives every row with **no Password column** and login-like note lines removed, creates the live services and Xero history; the same files again do nothing |
-| R02 | Services list and client page: live services with their next period; ended and archive-only WHMCS items under "Former services"; filters match the database |
-| R03 | Pending Invoicing: renewals due within 8 weeks and overdue, grouped by client, Xero description patterns, account, ex and incl GST |
-| R04 | **One Xero invoice for two ticked lines:** charges saved with the number and who; each service moves on one cycle; **Undo** puts everything back |
-| R05 | Recording refused (nothing saved) for lines of two clients, an already-recorded period, or a missing invoice number or name |
-| R06 | Correcting the next period date needs a reason; saved and audited with it; Undo restores it |
-| R07 | New service: a billed service needs a price and cycle; it then shows on the client and, when due, on Pending Invoicing |
-| R08 | A ready milestone and a completed on-completion task (with an amount override) appear on Pending Invoicing; recording charges each once and ties the task's hours |
-| R09 | Month-end claims: the month's hours × rate become a pending claim (hours tied); a progress claim over the remaining fee is refused; removing a claim frees its hours |
-| R10 | Lead time setting: widening it to 20 weeks adds the later renewal to Pending Invoicing |
-| R11 | Import undo: refused while a manager-recorded invoice uses its services; allowed after that invoice is undone; removes services, archive, history and the new client |
+| K01 | Staff seeded from the names in Action for; 7.5 h on Monday saved as 450 minutes, audited, **Undo** restores; a new person can be added (6 h Mon–Fri) and appears on Workload; switched off, they leave it |
+| K02 | A task scheduled today shows under its person with "1h 30m / 6h"; tasks scheduled on a past day appear under "Overdue on the schedule"; the "Not scheduled" count equals the database |
+| K03 | **Move** form: another day, 2 h booked and another person → Action for has the new person instead of the old (others kept), audited; **Undo** puts day, time and person back exactly |
+| K04 | **Drag and drop** at desktop width: a card dragged to a later day is rescheduled; dragged to "Not scheduled" it comes off the schedule; no JavaScript or security-policy errors |
+| K05 | A closed task can't be scheduled; a person not on Staff & hours is refused; nothing changes |
+| K06 | Materials: $100 cost with a 20% markup defaults to $120 sell (margin shown); a bad cost is refused (nothing saved); an edit is audited and **Undo** restores it; an ordered item entered by mistake can be deleted |
+| K07 | A **received** item appears on Pending Invoicing as a Material line; recording it with a Xero number makes one charge of $120 and takes it off the list; an invoiced item can't be changed; **Undo** of the invoice puts it back on the list |
+| K08 | A received item can't be deleted; cancelling needs a reason; a cancelled item is not on Pending Invoicing |
+| K09 | The desktop sidebar has Workload, Month-end claims, Billing settings, Staff & hours and More…; each loads and is highlighted |
 
-## 3. Your WHMCS import (real data, MySQL 8.0.46)
+Layout tests now also cover Workload, Staff & hours and the Move form at 320/375/390/430/1280 px. P01 (imported records and locked fields unchanged) passed in every run.
+
+## 3. Database migration 006
 | Check | Result |
 |---|---|
-| Preparation (`tools/prepare-whmcs-import.py`, private) from the 21 Oct WHMCS exports, your edited reconciliation workbook, Cathy's renewals workbook and the 2 Nov Xero export | Re-run today: all six output files **identical** to the import zip |
-| Passwords | Password column removed (208 values); **68 note lines** that looked like logins removed (clients 2, services 66). After import: **0** archive rows contain a password field |
-| Dry run | 2 new clients (the two you decided to create), 575 archive rows (135 clients, 209 services, 231 domains), **173 services** (116 billed, 25 internal, 32 no charge), **175** invoiced periods from Xero |
-| Import | As the dry run; batch 1 |
-| Pending Invoicing straight after | **18 renewals due within 8 weeks, $3,208.10 ex GST; 5 overdue = $1,598.10** — the same 5 and the same total as your reconciliation workbook |
-| Undo | Everything removed (clients back to 365); re-import works; same files again refused; undo **refused** while a manager-recorded invoice depends on the batch, nothing changed |
+| Runner on real data (MySQL 8.0.46) | 2 tables created, 2 columns added; 2 settings; **7 people** seeded from Action for, 4 switched on (an open task or one in the last 12 months — based on the 30 Oct snapshot; adjust on Staff & hours) |
+| App DB user without CREATE/ALTER | installer stops before anything changes and names only 006's SQL file |
+| phpMyAdmin `.apply.sql`, then installer | "schema up to date", installed, verified; staff seeded the same way |
+| v0.13.0 on the migrated database | its own suite 102/102 |
 
-## 4. Install rehearsal (simulated server: v0.12.0 live on ea-php83, real data, MySQL 8.0.46)
-- Dry run: migration 005 pending, the same server files carried. ✔
-- DB user without CREATE/ALTER: stops before anything changes, names only 005's SQL file; after running it: installed and verified; full suite 102/102. ✔
-- `deploy/rollback.sh`: v0.12.0 back and verified; works on the migrated database (its own suite 91/91). ✔
-- DB user that can change structure: 005 applied and verified automatically; installed; import run with the installed tool. ✔
-- Packages scanned for real client data: the app package holds none. The import zip is confidential by design (client names, domains, prices; no passwords).
-
-## 5. Not covered here
+## 4. Not covered here
 - Your real server (database user permissions, cPanel specifics) — the installer handles both cases.
-- Renewals Cathy has invoiced in Xero since the 2 Nov export: record them in Pending Invoicing after the import (see INSTALL.md).
+- Touch drag on phones: phones use **Move** (drag is for computers).
 - Phones other than Chromium's emulation.
