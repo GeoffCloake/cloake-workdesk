@@ -3,8 +3,41 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.13.0 · build 20261103.2 — 3 November 2026
+**Status: built and tested locally (102/102 tests on MySQL 8.0.46 with your real-data replica, and on MariaDB with synthetic data; your real WHMCS import rehearsed: dry run, import, undo, re-import; installed over v0.12.0 by both database routes). Not yet deployed. Not yet user-confirmed.**
+Services & billing — the WHMCS replacement (roadmap v0.13, one release as you asked). **Includes database migration 005** (add-only, reversible) and a separate, undoable WHMCS import.
+
+### Added — services register
+- **More ▸ Services:** every hosting service, domain, email account, DNS and maintenance item — client, kind, status, price ex GST, billing cycle, Xero account, **next period to invoice**, domain expiry/registrar, cPanel username (never a password), check status. Filters: kind, live/ended, billed/no charge/internal, "Needs a look", overdue, due within the lead time.
+- **Service page:** next invoice with its Xero description, every invoiced period (Xero history and manager-recorded), the original WHMCS record (read-only). **Correct the next period date** needs a reason; audited and undoable. Edit and ＋ New service.
+- **Client page:** Services & domains with their next renewal, and **Former services** (ended ones and the WHMCS items that were never live).
+
+### Added — Pending Invoicing (for Cathy)
+- One list, grouped by client: **renewals** due within 8 weeks or overdue, **ready milestones**, **completed tasks** billed on completion (amount editable), and **month-end claims**. Each line has the suggested Xero description in your patterns ("WEBSITE HOSTING - {plan} - {domain} (dd/mm/yyyy - dd/mm/yyyy)" + Billing Period, "Domain Renewal - … - 1 Year/s", "Email Only", "DNS and Forwarding"), a **Copy** button, the Xero account, and ex/incl GST.
+- **Record invoice:** tick the lines on one Xero invoice, enter the Xero number and your name → each line is recorded as invoiced; a service moves on one cycle; a task's billable hours are tied to the charge. **Undo** puts it all back. A period can never be recorded twice; lines of two clients on one invoice are refused.
+- **Today** shows "To invoice: n (m overdue)".
+
+### Added — month-end claims, task fees, settings
+- **More ▸ Month-end claims:** for tasks billed monthly, the month's unbilled billable hours × hourly rate (editable) and a progress claim on the set fee (capped at what is left) → pending claims on Pending Invoicing. A pending claim can be removed (its hours are freed).
+- **More ▸ Billing settings:** lead time (8 weeks), GST, Xero accounts (43504 hosting, 43601 domains, optional task account), hourly rate, and "task fees from" (set to the install date, so old completed tasks don't appear). Audited.
+
+### Added — WHMCS import and archive (`deploy/import-whmcs.php`, run in the Terminal)
+- **Archive:** every WHMCS row (135 clients, 209 services, 231 domains — cancelled and expired too) stored read-only with a fingerprint. **No passwords**: the Password column is dropped and note lines that look like logins are removed (68 on your data). Release check confirms the archive holds no password.
+- **Services:** the 173 live items (116 billed, 25 internal, 32 no charge — 3 marked "Needs a decision"), on the clients you decided, with the 2 new clients created. Next period = the day after the last period invoiced in Xero (else WHMCS's date; domains: expiry). **175 invoiced periods** loaded from the Xero export.
+- Dry run first; the import is one batch that can be undone (refused while an invoice recorded in the manager depends on it). Later WHMCS exports (invoices, payments, transactions, products) can be added as another batch.
+- `tools/prepare-whmcs-import.py` (private machine only) builds the import folder from the WHMCS exports, your reconciliation workbook, Cathy's renewals workbook (her "Invoiced now?" and corrected dates are honoured) and the Xero export.
+
+### Fixed
+- New template form ignored its default pricing and chargeable values.
+
+### Database — migration 005 (`deploy/migrations/005_services_billing.*`)
+- New tables `services`, `charges` (UNIQUE kind + item + period start), `settings`, `archive_whmcs`; new column `work_log.charge_id`. Seeds the settings. No existing column or value is changed; v0.12.0 runs normally on the migrated database (tested).
+
+### Not in this release
+- Creating invoices in Xero (Cathy keys them in); WHMCS invoices/payments history (when you export it); product plans; credentials (Joomla access levels, later).
+
 ## v0.12.0 · build 20261103.1 — 3 November 2026
-**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~15:00). Rollback target for v0.13.** Tested locally beforehand: 91/91 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.11.0 by both database routes.
+**Status: deployed to manager-dev and user-confirmed 3 Nov 2026 (~15:00). Rollback target for v0.13.0.** Tested locally beforehand: 91/91 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.11.0 by both database routes.
 Pricing & templates (roadmap v0.12), with progressive billing recorded. **Includes database migration 004** (add-only, reversible). Design approved by you on 3 Nov.
 
 ### Added — pricing module (one panel on enquiries, tasks and task templates)
