@@ -128,7 +128,7 @@ printf '%s\n' "$MIG_OUT" | sed 's/^/  /' | tee -a "$LOG" >/dev/null
 if [ "$MIG_RC" = 10 ]; then
   if [ "$DRY" = 1 ]; then say "Database: migration pending — would apply:"; printf '%s\n' "$MIG_OUT" | grep -E 'PENDING|not recorded' | sed 's/^ */    /' | tee -a "$LOG"
   else
-    say "Database: applying migration (added columns only; existing data unchanged)…"
+    say "Database: applying migration (add-only: new columns/tables; existing data unchanged)…"
     set +e; CM_CONFIG="$CONFIG" "$PHP" "$PKG/deploy/migrate.php" apply 2>&1 | tee -a "$LOG" | sed 's/^/  /'; MIG_RC=${PIPESTATUS[0]}; set -e
     case "$MIG_RC" in
       0) say "Database migration: OK" ;;
