@@ -21,7 +21,11 @@ function cm_changes(array $old, array $new): array
 }
 
 /** Updates that can be undone (v0.11): event kind => table. The payload holds {field:{previous,current}}. */
-const CM_UNDOABLE = ['client_updated' => 'clients', 'contact_updated' => 'contacts', 'task_updated' => 'tasks', 'work_log_updated' => 'work_log', 'enquiry_updated' => 'enquiries'];
+const CM_UNDOABLE = ['client_updated' => 'clients', 'contact_updated' => 'contacts', 'task_updated' => 'tasks', 'work_log_updated' => 'work_log', 'enquiry_updated' => 'enquiries',
+    // v0.12: rows identified by payload row_id; '*' = several rows, payload {_rows:[{table,id,changes}]}
+    'price_line_updated' => 'breakdown_items', 'milestone_updated' => 'billing_milestones', 'template_updated' => 'task_templates', 'plan_updated' => 'enquiry_task_plans', 'proforma_retired' => '*'];
+/** Tables a multi-row undo ('*') may touch. */
+const CM_UNDO_MULTI_TABLES = ['tasks', 'clients'];
 /** How long after saving the Undo link stays usable (seconds). */
 const CM_UNDO_WINDOW = 1800;
 
@@ -32,7 +36,7 @@ function cm_audit(PDO $pdo, string $kind, array $ids, string $summary, ?array $p
     $s->execute([$ids['client_id'] ?? null, $ids['enquiry_id'] ?? null, $ids['task_id'] ?? null, $ids['work_log_id'] ?? null, $kind, mb_substr($summary, 0, 1000),
         $payload === null ? null : json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)]);
     // Offer Undo for the most recent update made in this session (shown once on the next page).
-    if (isset(CM_UNDOABLE[$kind]) && $payload && session_status() === PHP_SESSION_ACTIVE) {
+    if (isset(CM_UNDOABLE[$kind]) && $payload && session_status() === PHP_SESSION_ACTIVE && (CM_UNDOABLE[$kind] !== '*' || !empty($payload['_rows']))) {
         $_SESSION['cm_undo'] = ['id' => (int)$pdo->lastInsertId(), 'at' => time(), 'show' => true, 'summary' => mb_substr($summary, 0, 160)];
     }
 }
@@ -105,4 +109,10 @@ function cm_edit_error(Throwable $e, PDO $pdo, string $logLabel): string
     if ($e instanceof InvalidArgumentException) return $e->getMessage();
     error_log('Cloake ' . $logLabel . ': ' . $e->getMessage());
     return 'Could not save. No changes were made. The error has been logged.';
+}
+
+/** v0.12: stages of a task that are still open (not completed/cancelled). */
+function cm_open_stages(PDO $pdo, int $taskId): array
+{
+    return allRows($pdo, 'SELECT id,stage_no,title FROM tasks WHERE parent_task_id=? AND NOT (' . cm_closed_status_sql('status') . ') AND completed_at IS NULL ORDER BY stage_no,id', [$taskId]);
 }

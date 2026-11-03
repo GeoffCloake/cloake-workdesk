@@ -5,7 +5,7 @@ declare(strict_types=1);
  * task was created (to fix mis-entries). Actions:
  *   save   — update fields (audited, stale-edit protected, undoable)
  *   close  — withdraw, or mark as a duplicate of another enquiry; optionally cancel its open tasks
- *   delete — only an app-made enquiry with no task; its price lines go with it; a snapshot is audited
+ *   delete — only an app-made enquiry with no task; its price lines, milestones and planned tasks go with it; a snapshot is audited
  * Imported enquiries (legacy_source_id set) stay read-only.
  */
 require __DIR__ . '/inc/bootstrap.php';
@@ -80,11 +80,15 @@ try {
             if ($tasks) throw new InvalidArgumentException('This enquiry has a task, so it cannot be deleted. Withdraw it or mark it as a duplicate instead.');
             if (cm_post('confirm_delete', 10) !== 'yes') throw new InvalidArgumentException('Tick the box to confirm deleting the enquiry.');
             $lines = allRows($pdo, 'SELECT * FROM breakdown_items WHERE enquiry_id=?', [$id]);
+            $mss = allRows($pdo, 'SELECT * FROM billing_milestones WHERE enquiry_id=?', [$id]);
+            $plans = allRows($pdo, 'SELECT * FROM enquiry_task_plans WHERE enquiry_id=?', [$id]);
+            $pdo->prepare('DELETE FROM billing_milestones WHERE enquiry_id=?')->execute([$id]);
             $pdo->prepare('DELETE FROM breakdown_items WHERE enquiry_id=?')->execute([$id]);
+            $pdo->prepare('DELETE FROM enquiry_task_plans WHERE enquiry_id=?')->execute([$id]);
             // Earlier audit entries keep their text; only their link to the deleted row is cleared.
             $pdo->prepare('UPDATE activity_events SET enquiry_id=NULL WHERE enquiry_id=?')->execute([$id]);
             $pdo->prepare('DELETE FROM enquiries WHERE id=?')->execute([$id]);
-            cm_audit($pdo, 'enquiry_deleted', ['client_id' => $old['client_id']], 'Enquiry #' . $id . ' deleted: ' . $old['title'], ['enquiry' => $old, 'price_lines' => $lines]);
+            cm_audit($pdo, 'enquiry_deleted', ['client_id' => $old['client_id']], 'Enquiry #' . $id . ' deleted: ' . $old['title'], ['enquiry' => $old, 'price_lines' => $lines, 'milestones' => $mss, 'planned_tasks' => $plans]);
             $pdo->commit();
             header('Location: ' . route('enquiries', ['deleted' => $id]), true, 303); exit;
         }

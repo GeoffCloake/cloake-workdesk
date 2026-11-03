@@ -93,6 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ba = !empty($_POST['billing_advised']) ? 1 : 0;
             $new['billing_advised'] = ($ba === 0 && $old && $old['billing_advised'] === null) ? null : $ba;   // unticked + never set = still unset
         }
+        // v0.12: a task with open stages can't be completed (cancelling it is still allowed).
+        if ($id && $raw['status'] === 'completed' && strtolower((string)$old['status']) !== 'completed' && ($openSt = cm_open_stages($pdo, $id))) throw new InvalidArgumentException('Complete or cancel its stages first (' . count($openSt) . ' still open).');
         // Never write a field outside this record's editable set.
         $new = array_intersect_key($new, array_flip($editable));
         if ($id) {

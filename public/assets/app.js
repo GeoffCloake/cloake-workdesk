@@ -370,6 +370,12 @@
         var cur = tIn.value.trim();
         if (typSel.value && (cur === '' || cur === lastAuto)) { tIn.value = typSel.value; lastAuto = typSel.value; }
       });
+      // v0.12: choosing a template fills the title the same way.
+      var tplSel = $('[data-template-select]', tfm);
+      if (tplSel) tplSel.addEventListener('change', function () {
+        var opt = tplSel.options[tplSel.selectedIndex], t = opt ? (opt.getAttribute('data-title') || '') : '', cur = tIn.value.trim();
+        if (t && (cur === '' || cur === lastAuto)) { tIn.value = t; lastAuto = t; }
+      });
     }
   }
 

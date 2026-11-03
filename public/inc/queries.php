@@ -28,7 +28,7 @@ function cm_tasks_query(array $src): array
         'priority' => " ORDER BY FIELD(LOWER(COALESCE(t.priority,'')),'immediate','urgent','high','normal','low','') , (t.required_by IS NULL), t.required_by ASC, t.id DESC",
         'queue' => ' ORDER BY (t.queue IS NULL), t.queue ASC, (t.required_by IS NULL), t.required_by ASC, t.id DESC',
     ][$f['sort']] ?? ' ORDER BY t.id DESC';
-    $sql = 'SELECT t.id,t.title,t.source_id,t.source_system,t.status,t.priority,t.required_by,t.received_at,t.completed_at,t.client_id,t.assigned_to,t.queue,t.task_category,t.task_type,t.pricing,t.agreed_fee_ex_gst,t.invoice_number,c.name client_name,k.display_name contact_name
+    $sql = 'SELECT t.id,t.title,t.source_id,t.source_system,t.status,t.priority,t.required_by,t.received_at,t.completed_at,t.client_id,t.assigned_to,t.queue,t.task_category,t.task_type,t.pricing,t.agreed_fee_ex_gst,t.invoice_number,t.stage_no,t.parent_task_id,c.name client_name,k.display_name contact_name
       FROM tasks t LEFT JOIN clients c ON c.id=t.client_id LEFT JOIN contacts k ON k.id=t.contact_id'
       . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . $order;
     return [$sql, $args, $f];

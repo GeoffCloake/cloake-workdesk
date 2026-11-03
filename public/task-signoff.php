@@ -5,6 +5,7 @@ declare(strict_types=1);
  * date are workload fields). Both are ordinary audited task updates, so Undo applies.
  *   signoff — status completed, completed date (kept if already set), who, when, note
  *   reopen  — reason required; status back to "in progress", completed date and sign-off cleared
+ * v0.12: a task with stages can only be signed off when every stage is completed or cancelled.
  */
 require __DIR__ . '/inc/bootstrap.php';
 require_once __DIR__ . '/inc/edit.php';
@@ -21,6 +22,8 @@ try {
     $closed = in_array(strtolower(trim((string)$old['status'])), CM_CLOSED_TASK_STATUSES, true);
     if ($action === 'signoff') {
         if ($closed) throw new InvalidArgumentException('This task is already closed.');
+        $open = cm_open_stages($pdo, $id);
+        if ($open) throw new InvalidArgumentException('Sign off its stages first: ' . implode(', ', array_map(fn($x) => 'stage ' . $x['stage_no'] . ' (#' . $x['id'] . ')', $open)) . ' still open. A stage can also be cancelled.');
         $by = cm_post('signed_off_by', 100);
         if ($by === '') throw new InvalidArgumentException('Enter who is signing the task off.');
         $note = cm_post('sign_off_note', 500);

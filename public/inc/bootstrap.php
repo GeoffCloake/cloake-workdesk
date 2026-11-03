@@ -141,3 +141,4 @@ cm_start_session();
 require_once __DIR__ . '/layout.php';
 require_once __DIR__ . '/edit.php';
 require_once __DIR__ . '/queries.php';
+require_once __DIR__ . '/pricing-module.php';

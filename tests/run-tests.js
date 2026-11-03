@@ -168,7 +168,8 @@ function protectedChecksums() {
     'add-work.php', 'add-work.php?client_id=' + S.client.id, 'add-enquiry.php', 'convert-enquiry.php?id=1', 'edit-task.php?id=2048', 'edit-enquiry.php?id=1',
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
-    'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts'];
+    'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
+    'index.php?page=templates', 'edit-template.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -938,6 +939,241 @@ function protectedChecksums() {
     assert(!txt.includes('Test N13 withdrawn follow-up'), 'withdrawn enquiry listed');
     assert(txt.includes('Test N13 accepted') || /more in/.test(await P.locator('main').innerText()), 'accepted enquiry missing: ' + txt.slice(0, 300));
   });
+  /* ================= v0.12: pricing module, templates, planned tasks, stages, milestones ================= */
+  const csrfOf = async page => page.locator('input[name=csrf]').first().inputValue();
+  const postAndGo = async (page, url, form) => { const r = await page.request.post(BASE + url, { form, maxRedirects: 0 }); const loc = r.headers()['location']; if (loc) await page.goto(new URL(loc, BASE + url).href); return r; };
+  const clickIn = async (page, sel) => { await Promise.all([page.waitForNavigation(), page.click(sel)]); };
+  const pf = one(`SELECT id FROM clients WHERE LOWER(TRIM(name)) IN ('pro forma','pro-forma','proforma') ORDER BY id LIMIT 1`);
+  let q03enq = 0, q07tasks = [], tplSet = 0;
+  await test('Q01', 'Migration 004: every open pro-forma task is a template (title, instructions, set fee as a price line); templates page lists them', async () => {
+    assert(pf, 'no Pro forma client in this database');
+    const open = sql(`SELECT id,title,pricing,agreed_fee_ex_gst FROM tasks WHERE client_id=${pf} AND NOT (${closed('status')}) AND completed_at IS NULL`);
+    const tpl = sql(`SELECT id,from_task_id,title FROM task_templates`);
+    assert(open.length > 0 && open.every(t => tpl.some(x => +x[1] === +t[0] && x[2] === t[1])), `templates ${tpl.length} vs open pro-forma ${open.length}`);
+    const closedPf = num(`SELECT COUNT(*) FROM tasks t JOIN task_templates x ON x.from_task_id=t.id WHERE t.client_id=${pf} AND (${closed('t.status')} OR t.completed_at IS NOT NULL)`);
+    assert(closedPf === 0, 'a closed pro-forma task was copied');
+    for (const t of open.filter(t => t[2] === 'set' && +t[3] > 0)) assert(num(`SELECT COUNT(*) FROM breakdown_items b JOIN task_templates x ON x.id=b.template_id WHERE x.from_task_id=${t[0]} AND b.unit_price_ex_gst=${t[3]}`) === 1, 'set fee missing for task ' + t[0]);
+    assert(num(`SELECT COUNT(*) FROM task_templates WHERE instructions REGEXP BINARY 'rn[A-Z]'`) === 0, 'broken "rn" line breaks left in template instructions');
+    await go(P, 'index.php?page=templates');
+    const titles = await P.$$eval('main a.record strong', a => a.map(x => x.textContent));
+    assert(open.every(t => titles.includes(t[1])), 'templates page missing some');
+    assert(await P.locator('[data-testid=retire-proforma]').count() === 1, 'retire panel missing');
+    tplSet = +one(`SELECT x.id FROM task_templates x JOIN breakdown_items b ON b.template_id=x.id WHERE b.pricing_mode='set' ORDER BY b.unit_price_ex_gst DESC LIMIT 1`);
+    note(`${open.length} templates; template with set fee #${tplSet}`);
+  });
+  await test('Q02', 'Template edit is audited and undoable; an archived template is not offered on Quick Enquiry and can be restored', async () => {
+    const tid = +one(`SELECT id FROM task_templates WHERE id<>${tplSet} ORDER BY id LIMIT 1`); const oldTitle = one(`SELECT title FROM task_templates WHERE id=${tid}`);
+    await go(P, 'edit-template.php?id=' + tid); await P.fill('#title', 'Test Q02 renamed'); await save(P);
+    assert(one(`SELECT title FROM task_templates WHERE id=${tid}`) === 'Test Q02 renamed', 'not saved');
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='template_updated' AND JSON_EXTRACT(payload,'$.row_id')=${tid}`) >= 1, 'not audited');
+    await undoClick(P); assert(one(`SELECT title FROM task_templates WHERE id=${tid}`) === oldTitle, 'undo did not restore title');
+    await go(P, 'edit-template.php?id=' + tid); await clickIn(P, 'form:has(input[name=action][value=archive]) button');
+    await go(P, 'add-enquiry.php'); const opts = await P.$$eval('#template_id option', o => o.map(x => x.value));
+    assert(!opts.includes(String(tid)), 'archived template offered');
+    await go(P, 'edit-template.php?id=' + tid); assert(/archived/.test(await P.locator('.notice').first().innerText()), 'no archived notice');
+    await clickIn(P, 'form:has(input[name=action][value=restore]) button');
+    assert(+one(`SELECT active FROM task_templates WHERE id=${tid}`) === 1, 'not restored');
+  });
+  await test('Q03', 'Quick Enquiry from a template: title filled, template added as a planned task with its price lines', async () => {
+    await go(P, 'add-enquiry.php?client_id=' + S.client.id);
+    await P.selectOption('#template_id', String(tplSet));
+    const tTitle = one(`SELECT title FROM task_templates WHERE id=${tplSet}`);
+    assert(await P.inputValue('#title') === tTitle, 'title not filled: ' + await P.inputValue('#title'));
+    await P.fill('#title', 'Test Q03 website job'); const before = enqMax(); await save(P);
+    q03enq = enqMax(); assert(q03enq > before, 'not saved');
+    const plan = sql(`SELECT id,title,template_id FROM enquiry_task_plans WHERE enquiry_id=${q03enq}`);
+    assert(plan.length === 1 && plan[0][1] === tTitle && +plan[0][2] === tplSet, 'plan ' + JSON.stringify(plan));
+    const want = one(`SELECT ROUND(SUM(quantity*unit_price_ex_gst),2) FROM breakdown_items WHERE template_id=${tplSet}`);
+    assert(one(`SELECT ROUND(SUM(quantity*unit_price_ex_gst),2) FROM breakdown_items WHERE enquiry_id=${q03enq} AND plan_id=${plan[0][0]}`) === want, 'plan lines total differ from template');
+  });
+  await test('Q04', 'Pricing panel on an enquiry: add lines (whole job / for a planned task), totals ex GST + 15% GST match the database; edit, reorder, remove', async () => {
+    await go(P, 'convert-enquiry.php?id=' + q03enq + '#pricing');
+    await openDetails(P, 'Add price line'); await P.fill('#nenquiry-desc', 'Test Q04 hosting setup'); await P.fill('#nenquiry-qty', '2'); await P.fill('#nenquiry-price', '45.50'); await P.selectOption('#nenquiry-mode', 'web_service'); await P.fill('#nenquiry-acct', 'Web Hosting');
+    await clickIn(P, 'form:has(#nenquiry-desc) button[type=submit]');
+    await openDetails(P, 'Add price line'); await P.fill('#nenquiry-desc', 'Test Q04 extra page'); await P.fill('#nenquiry-price', '120');
+    const planOpt = await P.$$eval('#nenquiry-for option', o => o.map(x => x.value)); assert(planOpt.some(v => v.startsWith('plan:')), 'no planned task in For');
+    await P.selectOption('#nenquiry-for', planOpt.find(v => v.startsWith('plan:'))); await clickIn(P, 'form:has(#nenquiry-desc) button[type=submit]');
+    const db = +one(`SELECT ROUND(SUM(quantity*unit_price_ex_gst),2) FROM breakdown_items WHERE enquiry_id=${q03enq}`);
+    const tot = await P.locator('[data-testid=price-totals]').innerText();
+    const money = n => '$' + n.toLocaleString('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    assert(tot.includes(money(db)) && tot.includes(money(Math.round(db * 15) / 100)) && tot.includes(money(Math.round(db * 115) / 100)), `totals "${tot}" vs db ${db}`);
+    const lid = +one(`SELECT id FROM breakdown_items WHERE enquiry_id=${q03enq} AND description='Test Q04 hosting setup'`);
+    assert(one(`SELECT CONCAT(quantity,'|',unit_price_ex_gst,'|',pricing_mode,'|',account_name) FROM breakdown_items WHERE id=${lid}`) === '2.000|45.50|web_service|Web Hosting', 'line fields');
+    await go(P, `pricing.php?owner_type=enquiry&owner_id=${q03enq}&line=${lid}`); await P.fill('#e-price', '50'); await save(P);
+    assert(+one(`SELECT unit_price_ex_gst FROM breakdown_items WHERE id=${lid}`) === 50, 'edit not saved');
+    await undoClick(P); assert(+one(`SELECT unit_price_ex_gst FROM breakdown_items WHERE id=${lid}`) === 45.5, 'undo of line edit');
+    const order = () => sql(`SELECT id FROM breakdown_items WHERE enquiry_id=${q03enq} ORDER BY line_order,id`).map(r => +r[0]);
+    const o1 = order(); await go(P, 'convert-enquiry.php?id=' + q03enq); await clickIn(P, `form:has(input[name=line_id][value="${o1[o1.length - 1]}"]) button`);
+    const o2 = order(); assert(o2[o2.length - 2] === o1[o1.length - 1], 'move up did not reorder ' + o1 + ' -> ' + o2);
+    await go(P, `pricing.php?owner_type=enquiry&owner_id=${q03enq}&line=${lid}`); await P.check('input[name=confirm]'); await clickIn(P, 'button.danger');
+    assert(num(`SELECT COUNT(*) FROM breakdown_items WHERE id=${lid}`) === 0 && num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='price_line_deleted' AND enquiry_id=${q03enq}`) === 1, 'remove');
+  });
+  await test('Q05', 'Price line validation refuses bad values; an imported enquiry\'s pricing is read-only', async () => {
+    await go(P, 'convert-enquiry.php?id=' + q03enq); const csrf = await csrfOf(P); const n0 = num('SELECT COUNT(*) FROM breakdown_items');
+    for (const bad of [{ quantity: '0', unit_price: '10' }, { quantity: '1', unit_price: 'abc' }, { quantity: '-2', unit_price: '10' }, { quantity: '1', unit_price: '' }]) {
+      await postAndGo(P, 'pricing.php', { owner_type: 'enquiry', owner_id: String(q03enq), csrf, action: 'line_add', description: 'Test Q05 bad', pricing_mode: 'set', ...bad });
+      assert(await P.locator('#pricing .alert').count() === 1, 'no error for ' + JSON.stringify(bad));
+    }
+    assert(num('SELECT COUNT(*) FROM breakdown_items') === n0, 'a bad line was saved');
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,legacy_source_id,created_at) VALUES (${S.anyClient},'Test Q05 imported','normal','enquiry','fabrik-q05',NOW())`);
+    const imp = enqMax(); await go(P, 'convert-enquiry.php?id=' + imp);
+    assert(await P.locator('#pricing details.inline-add').count() === 0, 'add forms shown on imported enquiry');
+    await postAndGo(P, 'pricing.php', { owner_type: 'enquiry', owner_id: String(imp), csrf, action: 'line_add', description: 'Test Q05 imported', quantity: '1', unit_price: '5', pricing_mode: 'set' });
+    assert(num(`SELECT COUNT(*) FROM breakdown_items WHERE enquiry_id=${imp}`) === 0, 'line added to imported enquiry');
+  });
+  await test('Q06', 'Milestones: % of the price, ready when the enquiry is accepted (and not when set back); listed on Pending Invoicing', async () => {
+    await go(P, 'convert-enquiry.php?id=' + q03enq);
+    await openDetails(P, 'Add milestone'); await P.fill('#nmenquiry-label', 'Test Q06 deposit'); await P.fill('#nmenquiry-pct', '30'); await P.selectOption('#nmenquiry-trig', 'accepted');
+    await clickIn(P, 'form:has(#nmenquiry-label) button[type=submit]');
+    const ms = sql(`SELECT id,percent,amount_ex_gst,trigger_kind FROM billing_milestones WHERE enquiry_id=${q03enq} AND label='Test Q06 deposit'`)[0];
+    assert(ms && +ms[1] === 30 && ms[2] === null && ms[3] === 'accepted', 'milestone ' + ms);
+    const total = +one(`SELECT ROUND(SUM(quantity*unit_price_ex_gst),2) FROM breakdown_items WHERE enquiry_id=${q03enq}`);
+    const want = '$' + (Math.round(total * 30) / 100).toLocaleString('en-NZ', { minimumFractionDigits: 2 });
+    const row = () => P.locator('[data-testid=milestone]:has-text("Test Q06 deposit")').innerText();
+    assert((await row()).includes(want) && /Planned/.test(await row()), `row "${await row()}" want ${want}`);
+    await go(P, 'edit-enquiry.php?id=' + q03enq); await P.selectOption('#status', 'accepted'); await save(P);
+    await go(P, 'convert-enquiry.php?id=' + q03enq); assert(/Ready to invoice/.test(await row()), 'not ready after accepted: ' + await row());
+    await go(P, 'index.php?page=invoicing'); assert((await P.locator('[data-testid=ready-milestones]').innerText()).includes('Test Q06 deposit'), 'not on Pending Invoicing');
+    await go(P, 'edit-enquiry.php?id=' + q03enq); await P.selectOption('#status', 'waiting'); await save(P);
+    await go(P, 'convert-enquiry.php?id=' + q03enq); assert(/Planned/.test(await row()), 'still ready after set back');
+    await go(P, 'edit-enquiry.php?id=' + q03enq); await P.selectOption('#status', 'accepted'); await save(P);
+  });
+  await test('Q07', 'Create tasks from ticked planned tasks: one task each, with its price lines and milestones; re-posting never duplicates; the rest can follow later', async () => {
+    await go(P, 'convert-enquiry.php?id=' + q03enq); const csrfP = await csrfOf(P);
+    await postAndGo(P, 'plan.php', { csrf: csrfP, action: 'add_blank', enquiry_id: String(q03enq), title: 'Test Q07 second task' });
+    const plans = sql(`SELECT id,title FROM enquiry_task_plans WHERE enquiry_id=${q03enq} ORDER BY id`); assert(plans.length === 2, 'plans ' + plans.length);
+    sql(`INSERT INTO billing_milestones (enquiry_id,plan_id,label,amount_ex_gst,trigger_kind,status,created_at) VALUES (${q03enq},${plans[0][0]},'Test Q07 stage paid',250.00,'signoff','planned',NOW())`);
+    await go(P, 'convert-enquiry.php?id=' + q03enq);
+    assert(await P.locator('[data-testid=convert-plans] input[name="plans[]"]').count() === 2, 'two plans not offered');
+    await P.uncheck(`[data-testid=convert-plans] input[value="${plans[1][0]}"]`);
+    const csrf = await P.locator('[data-testid=convert-plans] input[name=csrf]').inputValue();
+    await clickIn(P, '[data-testid=convert-plans] button.save');
+    const t1 = +one(`SELECT task_id FROM enquiry_task_plans WHERE id=${plans[0][0]}`); assert(t1 && P.url().includes('id=' + t1), 'landed ' + P.url());
+    const tk = sql(`SELECT title,source_system,source_id,client_id,enquiry_id,status FROM tasks WHERE id=${t1}`)[0];
+    assert(tk[0] === plans[0][1] && tk[1] === 'enquiry' && tk[2] === `${q03enq}-p${plans[0][0]}` && +tk[3] === S.client.id && +tk[4] === q03enq && tk[5] === 'open', 'task ' + tk);
+    assert(num(`SELECT COUNT(*) FROM breakdown_items WHERE plan_id=${plans[0][0]} AND (task_id IS NULL OR task_id<>${t1})`) === 0, 'plan lines not assigned');
+    assert(one(`SELECT task_id FROM billing_milestones WHERE label='Test Q07 stage paid'`) === String(t1), 'milestone not assigned');
+    assert(num(`SELECT COUNT(*) FROM breakdown_items WHERE enquiry_id=${q03enq} AND plan_id IS NULL AND task_id IS NOT NULL`) === 0, 'whole-job lines moved to a plan task');
+    assert(one(`SELECT status FROM enquiries WHERE id=${q03enq}`) === 'task_created', 'enquiry status');
+    // re-post the same plan (stale page) → nothing new
+    await P.request.post(BASE + 'convert-enquiry.php', { form: { id: String(q03enq), csrf, 'plans[]': String(plans[0][0]) }, maxRedirects: 0 });
+    const csrf2 = await (async () => { await go(P, 'convert-enquiry.php?id=' + q03enq); return P.locator('[data-testid=convert-plans] input[name=csrf]').inputValue(); })();
+    await P.request.post(BASE + 'convert-enquiry.php', { form: { id: String(q03enq), csrf: csrf2, 'plans[]': String(plans[0][0]) }, maxRedirects: 0 });
+    assert(tasksFor(q03enq) === 1, 'duplicate task: ' + tasksFor(q03enq));
+    await go(P, 'convert-enquiry.php?id=' + q03enq); await clickIn(P, '[data-testid=convert-plans] button.save');
+    assert(tasksFor(q03enq) === 2, 'second plan not created later');
+    q07tasks = sql(`SELECT id FROM tasks WHERE enquiry_id=${q03enq} ORDER BY id`).map(r => +r[0]);
+  });
+  await test('Q08', 'Concurrency: 6 sessions create the same planned task at once → exactly one task', async () => {
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,created_at) VALUES (${S.otherClient},'Test Q08 race','normal','accepted',NOW())`); const e = enqMax();
+    sql(`INSERT INTO enquiry_task_plans (enquiry_id,title,created_at) VALUES (${e},'Test Q08 plan',NOW())`); const pid = +one('SELECT MAX(id) FROM enquiry_task_plans');
+    const sessions = [];
+    for (let i = 0; i < 6; i++) { const s = await newSession(375); await go(s.page, 'convert-enquiry.php?id=' + e); sessions.push({ ...s, csrf: await s.page.locator('[data-testid=convert-plans] input[name=csrf]').inputValue() }); }
+    const res = await Promise.all(sessions.map(s => s.page.request.post(BASE + 'convert-enquiry.php', { form: { id: String(e), csrf: s.csrf, 'plans[]': String(pid) }, maxRedirects: 0 })));
+    for (const s of sessions) await s.ctx.close();
+    note('responses: ' + res.map(r => r.status()).join(','));
+    assert(tasksFor(e) === 1, 'tasks created: ' + tasksFor(e));
+  });
+  await test('Q09', 'Task pricing panel shows the lines from its planned task; a task line and the billing choice save, audit and undo', async () => {
+    const t1 = q07tasks[0]; await go(P, 'index.php?page=task&id=' + t1);
+    const db = +one(`SELECT ROUND(SUM(quantity*unit_price_ex_gst),2) FROM breakdown_items WHERE task_id=${t1}`);
+    assert(db > 0 && (await P.locator('[data-testid=price-totals]').innerText()).includes('$' + db.toLocaleString('en-NZ', { minimumFractionDigits: 2 })), 'task total');
+    await openDetails(P, 'Add price line'); await P.fill('#ntask-desc', 'Test Q09 task line'); await P.fill('#ntask-price', '80'); await clickIn(P, 'form:has(#ntask-desc) button[type=submit]');
+    assert(num(`SELECT COUNT(*) FROM breakdown_items WHERE task_id=${t1} AND enquiry_id IS NULL AND description='Test Q09 task line'`) === 1, 'task line');
+    await P.selectOption('#bm-task', 'monthly'); await clickIn(P, 'form.billing-mode button');
+    assert(one(`SELECT billing_mode FROM tasks WHERE id=${t1}`) === 'monthly', 'billing mode');
+    await undoClick(P); assert(one(`SELECT billing_mode FROM tasks WHERE id=${t1}`) === null, 'undo billing mode');
+  });
+  let q10parent = 0;
+  await test('Q10', 'Stages: break a task out into stages (copies client/enquiry); parent cannot be signed off or completed while a stage is open; a stage cannot have stages', async () => {
+    q10parent = q07tasks[0]; await go(P, 'index.php?page=task&id=' + q10parent);
+    await openDetails(P, 'Break out into stages'); await P.fill('#stage0', 'Test Q10 design'); await P.fill('#stage1', 'Test Q10 build');
+    await clickIn(P, '[data-testid=stages] button[type=submit]');
+    const st = sql(`SELECT id,stage_no,client_id,enquiry_id,status,source_system FROM tasks WHERE parent_task_id=${q10parent} ORDER BY stage_no`);
+    assert(st.length === 2 && +st[0][1] === 1 && +st[1][1] === 2 && st.every(s => +s[2] === S.client.id && +s[3] === q03enq && s[4] === 'open' && s[5] === 'app'), 'stages ' + JSON.stringify(st));
+    assert((await P.locator('[data-testid=stages]').innerText()).includes('0 of 2 done'), 'stage summary');
+    await openDetails(P, 'Extend'); await P.fill('#stage0', 'Test Q10 launch'); await clickIn(P, '[data-testid=stages] button[type=submit]');
+    assert(num(`SELECT MAX(stage_no) FROM tasks WHERE parent_task_id=${q10parent}`) === 3, 'extend');
+    const csrf = await csrfOf(P);
+    await postAndGo(P, 'task-signoff.php', { id: String(q10parent), csrf, action: 'signoff', signed_off_by: 'Geoff' });
+    assert(/stages first/.test(await P.locator('.alert').first().innerText()) && one(`SELECT signed_off_at FROM tasks WHERE id=${q10parent}`) === null, 'parent signed off with open stages');
+    await go(P, 'edit-task.php?id=' + q10parent); await P.selectOption('#status', 'completed'); await save(P);
+    assert(/stages first/.test(await P.locator('.alert').innerText()) && one(`SELECT status FROM tasks WHERE id=${q10parent}`) === 'open', 'parent completed with open stages');
+    await postAndGo(P, 'task-stages.php', { id: String(st[0][0]), csrf, 'stages[]': 'Test Q10 nested' });
+    assert(num(`SELECT COUNT(*) FROM tasks WHERE parent_task_id=${st[0][0]}`) === 0, 'stage of a stage created');
+    await go(P, 'index.php?page=task&id=' + st[0][0]); assert((await P.locator('[data-testid=stage-of]').innerText()).includes('#' + q10parent), 'stage-of link');
+    assert(await P.locator('[data-testid=stages]').count() === 0, 'stage offers stages');
+  });
+  await test('Q11', 'Sign off every stage, then the parent; a "signed off" milestone becomes ready, and goes back to planned when the task is reopened', async () => {
+    const csrf = await csrfOf(P);
+    for (const s of sql(`SELECT id FROM tasks WHERE parent_task_id=${q10parent}`)) await postAndGo(P, 'task-signoff.php', { id: s[0], csrf, action: 'signoff', signed_off_by: 'Roselyn' });
+    await go(P, 'index.php?page=task&id=' + q10parent);
+    const ms = () => P.locator('[data-testid=milestone]:has-text("Test Q07 stage paid")').innerText();
+    assert(/Planned/.test(await ms()), 'milestone ready before sign-off');
+    await postAndGo(P, 'task-signoff.php', { id: String(q10parent), csrf, action: 'signoff', signed_off_by: 'Geoff' });
+    assert(one(`SELECT status FROM tasks WHERE id=${q10parent}`) === 'completed', 'parent not signed off');
+    await go(P, 'index.php?page=task&id=' + q10parent); assert(/Ready to invoice/.test(await ms()), 'milestone not ready: ' + await ms());
+    await postAndGo(P, 'task-signoff.php', { id: String(q10parent), csrf, action: 'reopen', reopen_reason: 'Test Q11' });
+    await go(P, 'index.php?page=task&id=' + q10parent); assert(/Planned/.test(await ms()), 'still ready after reopen');
+  });
+  await test('Q12', 'Manual milestone: mark ready (who), back to planned; a ready milestone can only be voided, with a reason; void can be restored', async () => {
+    const t2 = q07tasks[1]; await go(P, 'index.php?page=task&id=' + t2);
+    await openDetails(P, 'Add milestone'); await P.fill('#nmtask-label', 'Test Q12 progress claim'); await P.fill('#nmtask-amt', '300'); await P.selectOption('#nmtask-trig', 'manual');
+    await clickIn(P, 'form:has(#nmtask-label) button[type=submit]');
+    const mid = +one(`SELECT id FROM billing_milestones WHERE label='Test Q12 progress claim' AND task_id=${t2}`); assert(mid, 'not added');
+    await go(P, `pricing.php?owner_type=task&owner_id=${t2}&ms=${mid}`); await P.fill('#mrb', 'Geoff'); await clickIn(P, 'form:has(#mrb) button');
+    assert(one(`SELECT marked_ready_by FROM billing_milestones WHERE id=${mid}`) === 'Geoff', 'mark ready');
+    const csrf = await csrfOf(P);
+    const del = await postAndGo(P, 'pricing.php', { owner_type: 'task', owner_id: String(t2), csrf, action: 'ms_delete', ms_id: String(mid), confirm: '1' });
+    assert(num(`SELECT COUNT(*) FROM billing_milestones WHERE id=${mid}`) === 1 && /can’t be removed/.test(await del.text()), 'ready milestone removed');
+    await postAndGo(P, 'pricing.php', { owner_type: 'task', owner_id: String(t2), csrf, action: 'ms_void', ms_id: String(mid), void_reason: '' });
+    assert(one(`SELECT status FROM billing_milestones WHERE id=${mid}`) === 'planned', 'voided without reason');
+    await postAndGo(P, 'pricing.php', { owner_type: 'task', owner_id: String(t2), csrf, action: 'ms_void', ms_id: String(mid), void_reason: 'Test Q12 not billing' });
+    assert(one(`SELECT status FROM billing_milestones WHERE id=${mid}`) === 'void', 'void');
+    await postAndGo(P, 'pricing.php', { owner_type: 'task', owner_id: String(t2), csrf, action: 'ms_restore', ms_id: String(mid) });
+    await postAndGo(P, 'pricing.php', { owner_type: 'task', owner_id: String(t2), csrf, action: 'ms_unready', ms_id: String(mid) });
+    assert(one(`SELECT CONCAT(status,'|',COALESCE(marked_ready_at,'-'))  FROM billing_milestones WHERE id=${mid}`) === 'planned|-', 'restore/unready');
+    await postAndGo(P, 'pricing.php', { owner_type: 'task', owner_id: String(t2), csrf, action: 'ms_add', label: 'Test Q12 bad', amount: '10', percent: '10', trigger_kind: 'manual' });
+    assert(num(`SELECT COUNT(*) FROM billing_milestones WHERE label='Test Q12 bad'`) === 0, 'both amount and % accepted');
+    const noEnq = +one(`SELECT id FROM tasks WHERE enquiry_id IS NULL AND source_system='fabrik' AND NOT (${closed('status')}) ORDER BY id LIMIT 1`);
+    await postAndGo(P, 'pricing.php', { owner_type: 'task', owner_id: String(noEnq), csrf, action: 'ms_add', label: 'Test Q12 accepted', amount: '10', trigger_kind: 'accepted' });
+    assert(num(`SELECT COUNT(*) FROM billing_milestones WHERE label='Test Q12 accepted'`) === 0, '"accepted" allowed on a task without an enquiry');
+  });
+  await test('Q13', 'Make a template from a task: copies fields, price lines and milestones; asking again opens the same template; it can be used on an enquiry', async () => {
+    const t1 = q07tasks[0]; await go(P, 'index.php?page=task&id=' + t1); await clickIn(P, '[data-testid=make-template] button');
+    const tid = +one(`SELECT id FROM task_templates WHERE from_task_id=${t1}`); assert(tid && P.url().includes('edit-template.php?id=' + tid), 'not made');
+    assert(one(`SELECT ROUND(SUM(quantity*unit_price_ex_gst),2) FROM breakdown_items WHERE template_id=${tid}`) === one(`SELECT ROUND(SUM(quantity*unit_price_ex_gst),2) FROM breakdown_items WHERE task_id=${t1}`), 'lines not copied');
+    assert(num(`SELECT COUNT(*) FROM billing_milestones WHERE template_id=${tid}`) === num(`SELECT COUNT(*) FROM billing_milestones WHERE task_id=${t1} AND status<>'void'`), 'milestones not copied');
+    await go(P, 'index.php?page=task&id=' + t1); assert(/template/.test(await P.locator('[data-testid=make-template]').innerText()) && await P.locator('[data-testid=make-template] button').count() === 0, 'offered twice');
+    sql(`INSERT INTO enquiries (client_id,title,priority,status,created_at) VALUES (${S.anyClient},'Test Q13 use template','normal','enquiry',NOW())`); const e = enqMax();
+    await go(P, 'convert-enquiry.php?id=' + e); await P.selectOption('#plan-template', String(tid)); await clickIn(P, 'form.add-plan button');
+    assert(num(`SELECT COUNT(*) FROM enquiry_task_plans WHERE enquiry_id=${e} AND template_id=${tid}`) === 1 && num(`SELECT COUNT(*) FROM billing_milestones WHERE enquiry_id=${e}`) === num(`SELECT COUNT(*) FROM billing_milestones WHERE template_id=${tid}`), 'template not used');
+  });
+  await test('Q14', 'Deleting an app-made enquiry (no task) removes its planned tasks, price lines and milestones, with a snapshot in the audit', async () => {
+    const e = enqMax(); await go(P, 'edit-enquiry.php?id=' + e); await P.check('input[name=confirm_delete]'); await clickIn(P, '.delete-form button');
+    assert(num(`SELECT COUNT(*) FROM enquiries WHERE id=${e}`) === 0 && num(`SELECT COUNT(*) FROM enquiry_task_plans WHERE enquiry_id=${e}`) === 0 && num(`SELECT COUNT(*) FROM billing_milestones WHERE enquiry_id=${e}`) === 0, 'leftovers');
+    assert(num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='enquiry_deleted' AND JSON_LENGTH(JSON_EXTRACT(payload,'$.planned_tasks'))=1`) >= 1, 'snapshot');
+  });
+  await test('Q15', 'Retire pro-forma tasks: all cancelled and the client archived in one step; Undo restores every one; Redo retires again', async () => {
+    const open = sql(`SELECT id,status FROM tasks WHERE client_id=${pf} AND NOT (${closed('status')}) AND completed_at IS NULL`);
+    const clientStatus = one(`SELECT status FROM clients WHERE id=${pf}`);
+    await go(P, 'index.php?page=templates'); await P.check('[data-testid=retire-proforma] input[name=confirm]'); await clickIn(P, '[data-testid=retire-proforma] button');
+    assert(open.every(t => one(`SELECT status FROM tasks WHERE id=${t[0]}`) === 'cancelled') && one(`SELECT status FROM clients WHERE id=${pf}`) === 'archive', 'not retired');
+    assert(await P.locator('[data-testid=retire-proforma]').count() === 0, 'panel still shown');
+    await undoClick(P);
+    assert(open.every(t => one(`SELECT status FROM tasks WHERE id=${t[0]}`) === t[1]) && one(`SELECT status FROM clients WHERE id=${pf}`) === clientStatus, 'undo did not restore');
+    await undoClick(P);
+    assert(open.every(t => one(`SELECT status FROM tasks WHERE id=${t[0]}`) === 'cancelled') && one(`SELECT status FROM clients WHERE id=${pf}`) === 'archive', 'redo');
+    await go(P, 'index.php?page=tasks'); const shown = await P.$$eval('main a.record', a => a.map(x => +new URL(x.href).searchParams.get('id')));
+    assert(!open.some(t => shown.includes(+t[0])), 'retired task in open list');
+    note(`${open.length} pro-forma tasks retired`);
+  });
+  await test('Q16', 'Imported task: price lines, billing choice and stages can be added; its imported record and locked fields stay byte-for-byte (P01)', async () => {
+    const t = S.fabrikTaskWithClient; await go(P, 'index.php?page=task&id=' + t);
+    await openDetails(P, 'Add price line'); await P.fill('#ntask-desc', 'Test Q16 line on imported task'); await P.fill('#ntask-price', '10'); await clickIn(P, 'form:has(#ntask-desc) button[type=submit]');
+    await openDetails(P, 'Break out into stages'); await P.fill('#stage0', 'Test Q16 stage'); await clickIn(P, '[data-testid=stages] button[type=submit]');
+    assert(num(`SELECT COUNT(*) FROM breakdown_items WHERE task_id=${t}`) >= 1 && num(`SELECT COUNT(*) FROM tasks WHERE parent_task_id=${t}`) === 1, 'not added');
+  });
   /* ================= Today correctness ================= */
   await test('T01', 'Today: no record-count tiles; queue items are real open/due records; backlog count matches database', async () => {
     await go(P, 'index.php?page=today');
@@ -1008,9 +1244,9 @@ function protectedChecksums() {
   await browser.close();
   /* ---------- report ---------- */
   const passed = results.filter(r => r.ok).length;
-  const summary = { database: DB, run_at: new Date().toISOString(), today_nz: todayNZ, build: '0.9.0 / 20261030.3', passed, failed: results.length - passed, total: results.length, results };
+  const summary = { database: DB, run_at: new Date().toISOString(), today_nz: todayNZ, build: VERSION_LABEL, passed, failed: results.length - passed, total: results.length, results };
   fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify(summary, null, 2));
-  const md = [`# Test run — ${DB}`, '', `Run ${summary.run_at} · build 0.9.0 / 20261030.3 · **${passed}/${results.length} passed**`, '', '| ID | Test | Result | Notes |', '|---|---|---|---|',
+  const md = [`# Test run — ${DB}`, '', `Run ${summary.run_at} · ${VERSION_LABEL} · **${passed}/${results.length} passed**`, '', '| ID | Test | Result | Notes |', '|---|---|---|---|',
     ...results.map(r => `| ${r.id} | ${r.name} | ${r.ok ? 'PASS' : '**FAIL**'} (${r.ms} ms) | ${(r.ok ? r.notes.join('; ') : r.error).replace(/\|/g, '/').replace(/\n/g, '<br>')} |`)].join('\n');
   fs.writeFileSync(path.join(OUT, 'results.md'), md + '\n');
   console.log(`\n${passed}/${results.length} passed`);
