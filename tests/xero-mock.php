@@ -49,6 +49,8 @@ switch ($path) {
         $S['contacts'] ??= [
             ['ContactID' => 'aaaaaaaa-0000-4000-8000-000000000001', 'Name' => 'Test Sync Match Limited', 'EmailAddress' => 'match@example.nz', 'ContactStatus' => 'ACTIVE', 'IsCustomer' => true],
             ['ContactID' => 'aaaaaaaa-0000-4000-8000-000000000002', 'Name' => 'Test Xero Only Person', 'EmailAddress' => 'only@example.nz', 'ContactStatus' => 'ACTIVE', 'IsCustomer' => true],
+            ['ContactID' => 'aaaaaaaa-0000-4000-8000-000000000003', 'Name' => 'Test Supplier Co', 'EmailAddress' => 'accounts@supplier.example.nz', 'ContactStatus' => 'ACTIVE', 'IsCustomer' => false],
+            ['ContactID' => 'aaaaaaaa-0000-4000-8000-000000000004', 'Name' => 'Test Old One-off Customer', 'EmailAddress' => '', 'ContactStatus' => 'ACTIVE', 'IsCustomer' => true],
         ];
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $list = $S['contacts'];

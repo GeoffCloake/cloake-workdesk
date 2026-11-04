@@ -147,6 +147,7 @@ $savedFlag = $_GET['saved'] ?? null;
   <?php endif; ?>
 </section>
 
+<?php if (cm_xero_state() === 'connected'): $xl = cm_client_xero_id($c) !== ''; ?><p class="small xero-flag" data-testid="client-xero"><?=$xl ? '✓ Linked to Xero' : '✗ Not linked to Xero'?><?=cm_client_overseas($c) !== '' ? ' · zero rated (overseas: ' . h(cm_client_overseas($c)) . ')' : ''?> · <a href="xero-sync.php<?=$xl ? '' : '?show=todo'?>"><?=$xl ? 'Xero sync' : 'Match or create it in Xero sync'?> ›</a></p><?php endif; ?>
 <details><summary>Client details</summary><dl>
   <?php foreach (['Business name' => $rv('business_name'), 'Email' => $rv('email'), 'Phone' => $rv('phone'), 'Physical address' => $physical, 'Postal address' => $postal, 'Preferred contact' => $rv('contact_method'), 'Xero contact' => (cm_client_xero_id($c) !== '' ? 'Linked (Xero sync)' : (strtolower(trim((string)$c['xero_contact_id'])) === 'null' ? '' : (string)$c['xero_contact_id'])), 'Tax on invoices' => (cm_client_overseas($c) !== '' ? 'Zero rated — overseas (' . cm_client_overseas($c) . ')' : ''), 'Credit approved' => ucfirst($rv('credit_approved')), 'Notes' => $rv('notes'), 'Comments' => $rv('comments')] as $label => $val): ?>
   <dt><?=h($label)?></dt><dd><?=h($val !== '' ? $val : '—')?></dd>

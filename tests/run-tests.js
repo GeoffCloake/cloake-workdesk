@@ -1667,26 +1667,29 @@ function protectedChecksums() {
     await test('XS01', 'Xero sync: a client with the same name (ignoring Ltd/Limited) is a probable match — linking stores the Xero ContactID (audited, Undo restores); a Xero-only contact can be added to Workdesk', async () => {
       const cm = clientMk('Test Sync Match Ltd', { email: 'match@example.nz' });
       let t = await sync(); assert(await P.locator('[data-testid=need-reconnect]').count() === 0, 'asks to reconnect although the new permissions were granted');
-      const box = P.locator(`[data-testid=sync-probable] input[value^="${cm}:"]`); assert(await box.count() === 1 && await box.isChecked(), 'not a ticked probable match');
-      await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-probable] button[type=submit]')]);
+      const box = P.locator(`[data-testid=sync-list] li[data-client="${cm}"][data-status=match] input[name="pairs[]"]`); assert(await box.count() === 1 && await box.isChecked(), 'not a ticked probable match');
+      assert(/Probable match/.test(await P.locator(`li[data-client="${cm}"] .sync-tag`).innerText()), 'flag');
+      await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-list] button[value=link]')]);
+      assert(await P.getAttribute(`li[data-client="${cm}"]`, 'data-status') === 'ok', 'not shown in sync after linking');
       assert(one(`SELECT xero_contact_id FROM clients WHERE id=${cm}`) === 'aaaaaaaa-0000-4000-8000-000000000001', 'not linked');
       await undoClick(P); assert(num(`SELECT xero_contact_id IS NULL FROM clients WHERE id=${cm}`) === 1, 'undo');
-      await sync(); await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-probable] button[type=submit]')]);
-      await P.locator('[data-testid=sync-xero-only] summary').click();
-      await Promise.all([P.waitForNavigation(), P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Xero Only Person' }).locator('button').click()]);
+      await sync(); await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-list] button[value=link]')]);
+      await Promise.all([P.waitForNavigation(), P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Xero Only Person' }).locator('button[data-act=add_client]').click()]);
       assert(one(`SELECT CONCAT(name,'|',email,'|',xero_contact_id) FROM clients WHERE xero_contact_id='aaaaaaaa-0000-4000-8000-000000000002'`) === 'Test Xero Only Person|only@example.nz|aaaaaaaa-0000-4000-8000-000000000002', 'not added');
     });
     await test('XS02', 'Create in Xero: ticked clients become Xero contacts (name, email) and are linked; a linked client renamed in Workdesk shows as different and "Update Xero from Workdesk" sends the new name', async () => {
       const cn = clientMk('Test Sync New Co', { email: 'new@example.nz' });
-      await sync(); await P.locator('[data-testid=sync-missing]').evaluate(d => d.open = true);
-      await P.check(`[data-testid=sync-missing] input[value="${cn}"]`); await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-missing] button[type=submit]')]);
+      await go(P, 'xero-sync.php?show=missing'); assert(await P.getAttribute(`li[data-client="${cn}"]`, 'data-status') === 'missing' && await P.locator('[data-testid=sync-list] li[data-status=ok]').count() === 0, 'missing filter');
+      await go(P, 'index.php?page=client&id=' + cn); assert(/Not linked to Xero/.test(await P.locator('[data-testid=client-xero]').innerText()), 'client flag');
+      await sync(); await P.check(`li[data-client="${cn}"] input[name="client_ids[]"]`); await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-list] button[value=create]')]);
       const xid = one(`SELECT xero_contact_id FROM clients WHERE id=${cn}`); assert(/^bbbbbbbb-/.test(xid || ''), 'not created/linked ' + xid);
       const post = JSON.parse(mlog().filter(r => r.p === '/api/Contacts' && r.m === 'POST').pop().b).Contacts[0]; assert(post.Name === 'Test Sync New Co' && post.EmailAddress === 'new@example.nz' && !post.ContactID, 'create payload');
       sql(`UPDATE clients SET name='Test Sync New Company' WHERE id=${cn}`);
-      await sync(); const row = P.locator('[data-testid=sync-diff] li', { hasText: 'Test Sync New Company' }); assert(await row.count() === 1, 'difference not shown');
-      await Promise.all([P.waitForNavigation(), row.locator('button').click()]);
+      await sync(); assert(await P.getAttribute(`li[data-client="${cn}"]`, 'data-status') === 'diff', 'difference not flagged');
+      await Promise.all([P.waitForNavigation(), P.click(`li[data-client="${cn}"] button[name=push]`)]);
       const up = JSON.parse(mlog().filter(r => r.p === '/api/Contacts' && r.m === 'POST').pop().b).Contacts[0]; assert(up.ContactID === xid && up.Name === 'Test Sync New Company', 'update payload');
-      assert(await P.locator('[data-testid=sync-diff]').count() === 0, 'still different after update');
+      assert(await P.getAttribute(`li[data-client="${cn}"]`, 'data-status') === 'ok', 'still different after update');
+      await go(P, 'index.php?page=client&id=' + cn); assert(/Linked to Xero/.test(await P.locator('[data-testid=client-xero]').innerText()), 'client flag linked');
     });
     await test('XS03', 'Account codes and tax types are checked against Xero: 43504 and both tax types ✓, an account Xero doesn\'t have (99990 on a service) ✗', async () => {
       await sync();
@@ -1703,6 +1706,18 @@ function protectedChecksums() {
       assert(inv.LineItems[0].TaxType === 'ZERORATEDOUTPUT' && inv.Reference === 'Order UK-7', 'payload ' + JSON.stringify(inv.LineItems[0]) + ' ' + inv.Reference);
       await undoClick(P);
       await go(P, 'index.php?page=client&id=' + uk); assert(/Zero rated — overseas \(United Kingdom\)/.test(await P.locator('main').textContent()), 'client page');
+    });
+    await test('XS06', 'Xero contacts that aren\'t clients: suppliers are listed apart ("no action needed"); a customer marked "Not a client" stops showing (Xero unchanged) and can be shown again', async () => {
+      await sync();
+      assert(await P.locator('[data-testid=sync-xero-other] li', { hasText: 'Test Supplier Co' }).count() === 1 && await P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Supplier Co' }).count() === 0, 'supplier not separated');
+      const oneoff = P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Old One-off Customer' }); assert(await oneoff.count() === 1, 'customer missing');
+      const before = mlog().filter(r => r.m === 'POST' && r.p === '/api/Contacts').length;
+      await Promise.all([P.waitForNavigation(), oneoff.locator('button[data-act=ignore]').click()]);
+      assert(await P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Old One-off Customer' }).count() === 0 && await P.locator('[data-testid=sync-xero-ignored] li', { hasText: 'Test Old One-off Customer' }).count() === 1, 'not moved to ignored');
+      assert(mlog().filter(r => r.m === 'POST' && r.p === '/api/Contacts').length === before, 'Xero was changed');
+      await P.locator('[data-testid=sync-xero-ignored] summary').click();
+      await Promise.all([P.waitForNavigation(), P.locator('[data-testid=sync-xero-ignored] li', { hasText: 'Test Old One-off Customer' }).locator('button[data-act=unignore]').click()]);
+      assert(await P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Old One-off Customer' }).count() === 1, 'not shown again');
     });
     await test('XS05', 'A connection made before v0.18 (without the contacts/settings permissions) is asked to reconnect; creating contacts is refused until then', async () => {
       const j = JSON.parse(fs.readFileSync(XJ, 'utf8')); const keep = j.scope; j.scope = 'offline_access accounting.invoices accounting.contacts.read'; fs.writeFileSync(XJ, JSON.stringify(j));

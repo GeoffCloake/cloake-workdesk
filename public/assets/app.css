@@ -385,3 +385,10 @@ details.more-details{background:transparent}
 
 /* v0.16 — domain register */
 .soon,.end.soon{color:#9a6400}
+
+/* v0.18 — Xero sync flags */
+.sync-list .sync-tag{font-style:normal;margin-left:6px}
+.sync-ok .sync-tag{background:#e6f2ea;color:#1f6b3a}
+.sync-diff .sync-tag,.sync-match .sync-tag{background:#fff3dc;color:#8a5a00}
+.sync-missing .sync-tag,.sync-lost .sync-tag{background:#fbe9e4;color:var(--late)}
+.sync-list label.check{display:flex;gap:6px;margin-top:4px}
