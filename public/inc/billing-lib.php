@@ -29,6 +29,7 @@ const CM_SETTINGS = [
     'hourly_rate_ex_gst' => ['Hourly rate ex GST (month-end claims, hourly tasks)', ''],
     'charges_from' => ['Task fees from (tasks completed on or after)', ''],
     'material_markup_pct' => ['Materials markup % on cost (blank = sell at cost)', ''],
+    'xero_tax_type' => ['Xero tax type on draft invoice lines (OUTPUT2 = 15% GST on Income)', 'OUTPUT2'],
 ];
 
 function cm_setting(PDO $pdo, string $k): string

@@ -1632,6 +1632,7 @@ function protectedChecksums() {
       const post = mlog().filter(r => r.p === '/api/Invoices'); assert(post.length === 1, 'posts ' + post.length);
       const inv = JSON.parse(post[0].b).Invoices[0];
       assert(inv.Status === 'DRAFT' && inv.Type === 'ACCREC' && inv.LineAmountTypes === 'Exclusive' && inv.LineItems.length === 1 && inv.LineItems[0].UnitAmount === 240 && inv.LineItems[0].AccountCode === '43504' && /WEBSITE HOSTING - test-xd04\.example\.nz/.test(inv.LineItems[0].Description), 'payload ' + JSON.stringify(inv));
+      assert(inv.LineItems[0].TaxType === 'OUTPUT2' && await P.locator('[data-testid=draft-warn]').count() === 0, 'tax type / unexpected warning');
       assert(inv.Contact.Name === one(`SELECT name FROM clients WHERE id=${xc}`) && post[0].tenant === '11111111-2222-3333-4444-555555555555' && inv.DueDate === todayNZ, 'contact/tenant/due');
       const c = sql(`SELECT xero_invoice_number, LENGTH(xero_invoice_id), recorded_by, amount_ex_gst FROM charges WHERE source_kind='service' AND source_id=${s1}`);
       assert(c.length === 1 && c[0][0] === 'INV-9001' && c[0][1] === '36' && c[0][2] === 'Test XD' && +c[0][3] === 240, 'charge ' + c);
@@ -1648,10 +1649,21 @@ function protectedChecksums() {
       assert(/did not create the draft: Account code/.test(await P.locator('.alert').innerText()), 'reason not shown');
       assert(num(`SELECT COUNT(*) FROM charges`) === before && one(`SELECT next_period_start FROM services WHERE id=${s2}`) === todayNZ, 'something recorded');
     });
+    await test('XD07', 'Every draft line carries the tax type (Billing settings › Xero tax type, default OUTPUT2); an account Xero drops is reported, not hidden; a bad tax type setting is refused', async () => {
+      const s3 = svc('test-xd07.example.nz', xc, 390); sql(`UPDATE services SET xero_account='99990' WHERE id=${s3}`);
+      await draftFor('test-xd07.example.nz');
+      assert(/Draft INV-\d+ created/.test(await P.locator('[data-testid=draft-made]').innerText()), 'draft not made');
+      assert(/Xero dropped account 99990/.test(await P.locator('[data-testid=draft-warn]').innerText()), 'no warning for dropped account');
+      const inv = JSON.parse(mlog().filter(r => r.p === '/api/Invoices').pop().b).Invoices[0]; assert(inv.LineItems[0].TaxType === 'OUTPUT2' && inv.LineItems[0].AccountCode === '99990', 'payload');
+      await undoClick(P);
+      await go(P, 'billing-settings.php'); assert(await P.inputValue('#xero_tax_type') === 'OUTPUT2', 'default not shown');
+      await P.fill('#xero_tax_type', 'bad type'); await P.fill('#updated_by', 'Test'); await save(P);
+      assert(/tax type/.test(await P.locator('.alert').innerText()), 'bad tax type accepted');
+    });
     await test('XD06', 'An expired access token is renewed (rotated refresh token saved); a dead connection asks to reconnect and records nothing; Disconnect removes access and the button', async () => {
       const j = JSON.parse(fs.readFileSync(XJ, 'utf8')); j.expires_at = 0; fs.writeFileSync(XJ, JSON.stringify(j)); const oldRefresh = j.refresh_token;
       await draftFor('test-xd04.example.nz');
-      assert(/Draft INV-9002/.test(await P.locator('[data-testid=draft-made]').innerText()), 'not made after refresh');
+      assert(/Draft INV-\d+ created/.test(await P.locator('[data-testid=draft-made]').innerText()), 'not made after refresh');
       const j2 = JSON.parse(fs.readFileSync(XJ, 'utf8')); assert(j2.refresh_token !== oldRefresh && j2.expires_at > Date.now() / 1000, 'rotated token not saved');
       await undoClick(P);
       j2.expires_at = 0; j2.refresh_token = 'ref-dead'; fs.writeFileSync(XJ, JSON.stringify(j2));

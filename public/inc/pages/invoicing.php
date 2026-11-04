@@ -25,6 +25,7 @@ $kindTag = ['service' => 'Renewal', 'milestone' => 'Milestone', 'task_fee' => 'T
 <p class="lead">Invoice these in Xero, then record the Xero invoice number here. Renewals show <?=$lead?> weeks before their period starts. Amounts are ex GST.</p>
 <?php $xeroOn = cm_xero_state() === 'connected'; $xeroName = $xeroOn ? (string)(cm_xero_load()['tenant_name'] ?? '') : ''; ?>
 <?php if (isset($_GET['recorded']) && !empty($_GET['draft'])): ?><div class="success" role="status" data-testid="draft-made">Draft <?=h($_GET['recorded'])?> created in Xero (<?=h($xeroName)?>) and recorded here. Cathy: review and approve it in Xero › Invoices › Draft.</div>
+<?php $xw = $_SESSION['cm_xero_warn'] ?? []; unset($_SESSION['cm_xero_warn']); if ($xw): ?><div class="notice" role="status" data-testid="draft-warn"><strong>Check the draft in Xero:</strong><ul><?php foreach ($xw as $w): ?><li><?=h($w)?></li><?php endforeach; ?></ul></div><?php endif; ?>
 <?php elseif (isset($_GET['recorded']) && !cm_undo_pending()): ?><div class="success" role="status">Invoice <?=h($_GET['recorded'])?> recorded.</div><?php endif; ?>
 <?php if ($xeroOn): ?><p class="small muted" data-testid="xero-on">Xero: connected to <strong><?=h($xeroName)?></strong><?=cm_xero_is_demo(cm_xero_load()) ? ' (Demo Company — test)' : ''?>. <a href="xero.php">Xero connection</a></p><?php endif; ?>
 <?php if ($err): ?><div class="alert" role="alert"><?=h($err['msg'])?></div><?php endif; ?>

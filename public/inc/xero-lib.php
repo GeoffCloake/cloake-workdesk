@@ -147,12 +147,13 @@ function cm_xero_contact(array &$x, array $client): array
  * Create ONE draft sales invoice. $lines: [['description','amount' (ex GST),'account']].
  * Returns ['id' => InvoiceID, 'number' => InvoiceNumber, 'url' => link to open it in Xero].
  */
-function cm_xero_create_draft(array &$x, array $client, array $lines, string $dueDate, string $reference = ''): array
+function cm_xero_create_draft(array &$x, array $client, array $lines, string $dueDate, string $reference = '', string $taxType = 'OUTPUT2'): array
 {
     if (cm_xero_state($x) !== 'connected') throw new RuntimeException('Xero is not connected. Set it up on More › Xero connection.');
     $inv = ['Type' => 'ACCREC', 'Status' => 'DRAFT', 'LineAmountTypes' => 'Exclusive', 'Contact' => cm_xero_contact($x, $client),
         'Date' => date('Y-m-d'), 'DueDate' => $dueDate, 'Reference' => mb_substr($reference, 0, 255),
-        'LineItems' => array_map(fn($l) => array_filter(['Description' => (string)$l['description'], 'Quantity' => 1, 'UnitAmount' => round((float)$l['amount'], 2), 'AccountCode' => (string)($l['account'] ?? '')], fn($v) => $v !== ''), $lines)];
+        // v0.17.1: the tax rate is always sent (a draft whose account Xero doesn't know otherwise gets no GST at all)
+        'LineItems' => array_map(fn($l) => array_filter(['Description' => (string)$l['description'], 'Quantity' => 1, 'UnitAmount' => round((float)$l['amount'], 2), 'AccountCode' => (string)($l['account'] ?? ''), 'TaxType' => $taxType], fn($v) => $v !== ''), $lines)];
     if ($inv['Status'] !== 'DRAFT') throw new LogicException('Only drafts may be created.');
     [$st, $j, $raw] = cm_xero_api($x, 'POST', '/Invoices?summarizeErrors=true', ['Invoices' => [$inv]]);
     $out = $j['Invoices'][0] ?? null;
@@ -161,5 +162,13 @@ function cm_xero_create_draft(array &$x, array $client, array $lines, string $du
         throw new RuntimeException('Xero did not create the draft: ' . $msg . '. Nothing was recorded.');
     }
     if (strtoupper((string)($out['Status'] ?? 'DRAFT')) !== 'DRAFT') throw new RuntimeException('Xero returned the invoice with status ' . $out['Status'] . ' — check it in Xero.');
-    return ['id' => (string)$out['InvoiceID'], 'number' => (string)($out['InvoiceNumber'] ?? ''), 'url' => 'https://go.xero.com/AccountsReceivable/Edit.aspx?InvoiceID=' . rawurlencode((string)$out['InvoiceID'])];
+    // v0.17.1: Xero silently drops an account code it doesn't know on a draft — say so instead of leaving it unnoticed.
+    $warn = [];
+    foreach ($inv['LineItems'] as $i => $sent) {
+        $got = $out['LineItems'][$i] ?? null;
+        if (!is_array($got)) continue;
+        if (!empty($sent['AccountCode']) && (string)($got['AccountCode'] ?? '') !== $sent['AccountCode']) $warn[] = 'Xero dropped account ' . $sent['AccountCode'] . ' on line ' . ($i + 1) . ' — set the account on the draft in Xero.';
+        if (!empty($sent['TaxType']) && (string)($got['TaxType'] ?? '') !== $sent['TaxType']) $warn[] = 'Xero did not apply tax type ' . $sent['TaxType'] . ' on line ' . ($i + 1) . ' — check GST on the draft.';
+    }
+    return ['id' => (string)$out['InvoiceID'], 'number' => (string)($out['InvoiceNumber'] ?? ''), 'warnings' => array_values(array_unique($warn)), 'url' => 'https://go.xero.com/AccountsReceivable/Edit.aspx?InvoiceID=' . rawurlencode((string)$out['InvoiceID'])];
 }

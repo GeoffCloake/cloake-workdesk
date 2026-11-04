@@ -54,6 +54,8 @@ switch ($path) {
         if (($in['Contact']['Name'] ?? '') === 'Test Xero Fail') $json(400, ['Elements' => [['ValidationErrors' => [['Message' => 'Account code \'99999\' is not a valid code']]]]]);
         $S['n'] = ($S['n'] ?? 9000) + 1; $save();
         $id = sprintf('%08x-0000-4000-8000-%012x', random_int(0, 0xffffffff), random_int(0, 0xffffffffffff));
-        $json(200, ['Invoices' => [['InvoiceID' => $id, 'InvoiceNumber' => 'INV-' . $S['n'], 'Status' => 'DRAFT', 'Type' => 'ACCREC']]]);
+        // like Xero on a draft: an account code the organisation doesn't have is dropped silently
+        $lines = array_map(function ($l) { if (isset($l['AccountCode']) && !in_array($l['AccountCode'], ['43504', '43601', '200'], true)) unset($l['AccountCode']); return $l; }, $in['LineItems'] ?? []);
+        $json(200, ['Invoices' => [['InvoiceID' => $id, 'InvoiceNumber' => 'INV-' . $S['n'], 'Status' => 'DRAFT', 'Type' => 'ACCREC', 'LineItems' => $lines]]]);
 }
 http_response_code(404); echo 'mock: no route ' . $path;

@@ -98,7 +98,7 @@ try {
         $lines = allRows($pdo, 'SELECT description, amount_ex_gst amount, xero_account account, period_start FROM charges WHERE id IN (' . implode(',', array_map('intval', $all)) . ') ORDER BY id');
         $due = max(date('Y-m-d'), (string)min(array_column($lines, 'period_start')));
         $crow = oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$client]) ?: ['name' => $cname];
-        try { $made = cm_xero_create_draft($xero, $crow, $lines, $due); } catch (RuntimeException $e) { throw new InvalidArgumentException($e->getMessage()); }
+        try { $made = cm_xero_create_draft($xero, $crow, $lines, $due, '', cm_setting($pdo, 'xero_tax_type') ?: 'OUTPUT2'); } catch (RuntimeException $e) { throw new InvalidArgumentException($e->getMessage()); }
         $inv = $made['number'] !== '' ? $made['number'] : 'DRAFT ' . substr($made['id'], 0, 8); $xid = $made['id'];
         $pdo->prepare('UPDATE charges SET xero_invoice_number=?, xero_invoice_id=? WHERE id IN (' . implode(',', array_map('intval', $all)) . ')')->execute([$inv, $xid]);
     }
@@ -107,6 +107,7 @@ try {
         ['_invoice' => ['created' => $created, 'claims' => $claims, 'services' => $svcDates, 'work' => $work, 'invoice_number' => $inv, 'xero_invoice_id' => $xid]]);
     $_SESSION['cm_last_staff'] = $by;
     $pdo->commit();
+    if ($xid && !empty($made['warnings'])) $_SESSION['cm_xero_warn'] = $made['warnings'];
     header('Location: ' . $back . '&recorded=' . rawurlencode($inv) . ($xid ? '&draft=1' : ''), true, 303); exit;
 } catch (Throwable $e) {
     $_SESSION['cm_invoice_error'] = ['msg' => cm_edit_error($e, $pdo, 'invoice record'), 'keys' => $keys, 'inv' => (string)($_POST['invoice_number'] ?? '')];
