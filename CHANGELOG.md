@@ -3,6 +3,14 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.17.1 · build 20261104.1 — 4 November 2026
+**Status: built and tested locally.** 126/126 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.17.0 with `cm-update` (no database change) and the full suite passed on the installed copy; `cm-update v0.17.0` goes back cleanly.
+Fixes from your real Xero Demo Company test (draft INV-0044: no account, GST $0).
+
+### Fixed
+- Every line of a Xero draft now carries the **tax type** — Billing settings › **Xero tax type**, default **OUTPUT2** (15% GST on Income). GST is right even when Xero doesn't recognise the account.
+- If Xero drops an account code (it does this silently on drafts when the organisation has no such account — e.g. 43504 in the Demo Company), the confirmation now says **"Check the draft in Xero: Xero dropped account 43504 on line 1"** instead of saying nothing. Same if Xero doesn't apply the tax type.
+
 ## v0.17.0 · build 20261103.6 — 3 November 2026
 **Status: deployed to manager-dev and user-confirmed 4 Nov 2026 (~10:39, "installed and looking good"). Real Xero Demo Company test 4 Nov 18:32: connect OK, draft INV-0044 created (description, ex-GST amount, due date right), undone and deleted. Found: Xero dropped the unknown account code and set no tax rate (GST $0) — fix in v0.17.1.** Tested: 125/125 on MySQL 8.0.46 (real-data replica) and MariaDB (fixture); installed over v0.16.0 with `cm-update` by both database routes; v0.16.0's own suite 119/119 after going back. **Includes database migration 008** (add-only, one column).
 Xero draft invoices — test with Xero's **Demo Company** first.

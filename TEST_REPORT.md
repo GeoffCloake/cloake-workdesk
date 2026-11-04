@@ -1,3 +1,16 @@
+# Test report — v0.17.1 · build 20261104.1
+
+**Result: 126 of 126 tests passed** on your real-data replica (MySQL 8.0.46) and on synthetic data (MariaDB 10.11), and on the copy installed by `cm-update v0.17.1` over v0.17.0. No database change. `cm-update v0.17.0` goes back and verifies.
+
+| ID | Proven (new or changed) |
+|---|---|
+| XD04 | Every draft line is sent with TaxType **OUTPUT2**; no warning when Xero keeps the account |
+| XD07 | A line whose account Xero drops (simulated like the Demo Company: unknown code removed) → draft still made, confirmation shows "Xero dropped account 99990 on line 1"; Billing settings shows Xero tax type OUTPUT2 by default and refuses a malformed code |
+
+The Xero stand-in now behaves like your Demo Company result: an unknown account code is dropped silently on a draft.
+
+---
+
 # Test report — v0.17.0 · build 20261103.6
 
 **Result: 125 of 125 tests passed** on your real-data replica (MySQL 8.0.46) and on synthetic data (MariaDB 10.11). Installed over v0.16.0 with `cm-update v0.17.0` by **both database routes**; back to v0.16.0 with `cm-update v0.16.0`. Zero PHP warnings, security-policy violations or JavaScript errors.
