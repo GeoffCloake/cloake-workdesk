@@ -148,7 +148,7 @@ $savedFlag = $_GET['saved'] ?? null;
 </section>
 
 <details><summary>Client details</summary><dl>
-  <?php foreach (['Business name' => $rv('business_name'), 'Email' => $rv('email'), 'Phone' => $rv('phone'), 'Physical address' => $physical, 'Postal address' => $postal, 'Preferred contact' => $rv('contact_method'), 'Xero contact reference' => (string)$c['xero_contact_id'], 'Credit approved' => ucfirst($rv('credit_approved')), 'Notes' => $rv('notes'), 'Comments' => $rv('comments')] as $label => $val): ?>
+  <?php foreach (['Business name' => $rv('business_name'), 'Email' => $rv('email'), 'Phone' => $rv('phone'), 'Physical address' => $physical, 'Postal address' => $postal, 'Preferred contact' => $rv('contact_method'), 'Xero contact' => (cm_client_xero_id($c) !== '' ? 'Linked (Xero sync)' : (strtolower(trim((string)$c['xero_contact_id'])) === 'null' ? '' : (string)$c['xero_contact_id'])), 'Tax on invoices' => (cm_client_overseas($c) !== '' ? 'Zero rated — overseas (' . cm_client_overseas($c) . ')' : ''), 'Credit approved' => ucfirst($rv('credit_approved')), 'Notes' => $rv('notes'), 'Comments' => $rv('comments')] as $label => $val): ?>
   <dt><?=h($label)?></dt><dd><?=h($val !== '' ? $val : '—')?></dd>
   <?php endforeach; ?>
 </dl><?php if ($migrated): ?><p><a class="inline-action" href="edit-client.php?id=<?=(int)$id?>">Edit client details</a></p><?php endif; ?></details>

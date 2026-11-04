@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($k === 'gst_rate' && (!is_numeric($v) || (float)$v < 0 || (float)$v > 1)) throw new InvalidArgumentException('GST rate is a fraction, e.g. 0.15.');
             if ($k === 'hourly_rate_ex_gst' && $v !== '' && !preg_match('/^\d{1,6}(\.\d{1,2})?$/', $v)) throw new InvalidArgumentException('Hourly rate must be dollars ex GST.');
             if ($k === 'charges_from' && $v !== '') m7date($v);
-            if ($k === 'xero_tax_type' && !preg_match('/^[A-Z0-9]{2,20}$/', $v)) throw new InvalidArgumentException('Xero tax type is Xero\'s code, e.g. OUTPUT2 (15% GST on Income).');
+            if (in_array($k, ['xero_tax_type', 'xero_tax_type_overseas'], true) && !preg_match('/^[A-Z0-9]{2,20}$/', $v)) throw new InvalidArgumentException('Xero tax type is Xero\'s code, e.g. OUTPUT2 (15% GST on Income).');
             if ($k === 'material_markup_pct' && $v !== '' && !preg_match('/^\d{1,3}(\.\d{1,2})?$/', $v)) throw new InvalidArgumentException('Materials markup is a percentage, e.g. 20.');
             $old = oneRow($pdo, 'SELECT v FROM settings WHERE k=? FOR UPDATE', [$k]);
             if ((string)($old['v'] ?? CM_SETTINGS[$k][1]) === $v && $old) continue;
@@ -35,7 +35,7 @@ cm_page_start('Billing settings', 'billing', ['back' => [route('invoicing'), 'Pe
 <?php if (isset($_GET['saved'])): ?><div class="success" role="status"><?=$_GET['saved'] === '1' ? 'Saved.' : 'No changes.'?></div><?php endif; ?>
 <form method="post" class="form"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>">
 <?php foreach (CM_SETTINGS as $k => [$label]): $v = $_SERVER['REQUEST_METHOD'] === 'POST' && is_string($_POST[$k] ?? null) ? trim($_POST[$k]) : cm_setting($pdo, $k); ?>
-<div class="field"><label for="<?=h($k)?>"><?=h($label)?></label><input id="<?=h($k)?>" name="<?=h($k)?>" maxlength="255" value="<?=h($v)?>"<?=$k === 'charges_from' ? ' type="date"' : ($k === 'xero_tax_type' ? ' spellcheck="false" autocapitalize="characters"' : ' inputmode="decimal"')?>></div>
+<div class="field"><label for="<?=h($k)?>"><?=h($label)?></label><input id="<?=h($k)?>" name="<?=h($k)?>" maxlength="255" value="<?=h($v)?>"<?=$k === 'charges_from' ? ' type="date"' : (str_starts_with($k, 'xero_tax_type') ? ' spellcheck="false" autocapitalize="characters"' : ' inputmode="decimal"')?>></div>
 <?php endforeach; ?>
 <p class="helper">Task fees: completed tasks billed on completion appear on Pending Invoicing only if they were completed on or after this date (so old work doesn't flood the list). Leave it empty to show none.</p>
 <div class="field"><label for="updated_by">Your name</label><input id="updated_by" name="updated_by" maxlength="100" required value="<?=h((string)($_SESSION['cm_last_staff'] ?? ''))?>"></div>

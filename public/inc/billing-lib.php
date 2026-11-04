@@ -30,6 +30,7 @@ const CM_SETTINGS = [
     'charges_from' => ['Task fees from (tasks completed on or after)', ''],
     'material_markup_pct' => ['Materials markup % on cost (blank = sell at cost)', ''],
     'xero_tax_type' => ['Xero tax type on draft invoice lines (OUTPUT2 = 15% GST on Income)', 'OUTPUT2'],
+    'xero_tax_type_overseas' => ['Xero tax type for overseas clients (ZERORATEDOUTPUT = Zero Rated)', 'ZERORATEDOUTPUT'],
 ];
 
 function cm_setting(PDO $pdo, string $k): string
@@ -39,7 +40,7 @@ function cm_setting(PDO $pdo, string $k): string
     return $cache[$k] ?? (CM_SETTINGS[$k][1] ?? '');
 }
 function cm_gst_rate(PDO $pdo): float { $g = cm_setting($pdo, 'gst_rate'); return is_numeric($g) ? (float)$g : CM_GST_RATE; }
-function cm_incl(PDO $pdo, float $ex): float { return round($ex * (1 + cm_gst_rate($pdo)), 2); }
+function cm_incl(PDO $pdo, float $ex, bool $overseas = false): float { return $overseas ? round($ex, 2) : round($ex * (1 + cm_gst_rate($pdo)), 2); }
 
 /** Add whole months, keeping the day where possible (31 Jan + 1 month = 28/29 Feb). */
 function cm_add_months(string $date, int $n): string
@@ -152,4 +153,28 @@ function cm_due_items(PDO $pdo, ?string $horizon = null): array
 function cm_charges_for(PDO $pdo, string $kind, int $id): array
 {
     return allRows($pdo, 'SELECT * FROM charges WHERE source_kind=? AND source_id=? ORDER BY period_start DESC, id DESC', [$kind, $id]);
+}
+
+
+/**
+ * v0.18: the Xero invoice Reference for a set of charges — what the client will recognise:
+ * a task's purchase order no (else job no, else title), a service's domain, a milestone's / material's task.
+ * Distinct values joined with ", ", at most 255 characters.
+ */
+function cm_charges_reference(PDO $pdo, array $chargeIds): string
+{
+    if (!$chargeIds) return '';
+    $refs = [];
+    $taskRef = function (int $tid) use ($pdo): string { $t = oneRow($pdo, 'SELECT title, job_number, purchase_order_no FROM tasks WHERE id=?', [$tid]); return $t ? (trim((string)$t['purchase_order_no']) !== '' ? 'PO ' . trim((string)$t['purchase_order_no']) : (trim((string)$t['job_number']) !== '' ? 'Job ' . trim((string)$t['job_number']) : (string)$t['title'])) : ''; };
+    foreach (allRows($pdo, 'SELECT source_kind, source_id FROM charges WHERE id IN (' . implode(',', array_map('intval', $chargeIds)) . ') ORDER BY id') as $g) {
+        $id = (int)$g['source_id'];
+        switch ($g['source_kind']) {
+            case 'service': $r = (string)(oneRow($pdo, 'SELECT COALESCE(domain,label) n FROM services WHERE id=?', [$id])['n'] ?? ''); break;
+            case 'material': $r = $taskRef((int)(oneRow($pdo, 'SELECT task_id FROM job_items WHERE id=?', [$id])['task_id'] ?? 0)); break;
+            case 'milestone': $m = oneRow($pdo, 'SELECT task_id, enquiry_id FROM billing_milestones WHERE id=?', [$id]); $r = $m && $m['task_id'] ? $taskRef((int)$m['task_id']) : ($m ? (string)(oneRow($pdo, 'SELECT title FROM enquiries WHERE id=?', [(int)$m['enquiry_id']])['title'] ?? '') : ''); break;
+            default: $r = $taskRef($id);   // task_fee, claim, progress: source_id is the task
+        }
+        if (($r = trim($r)) !== '') $refs[$r] = true;
+    }
+    return mb_substr(implode(', ', array_keys($refs)), 0, 255);
 }

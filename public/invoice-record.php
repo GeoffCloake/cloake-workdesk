@@ -98,7 +98,8 @@ try {
         $lines = allRows($pdo, 'SELECT description, amount_ex_gst amount, xero_account account, period_start FROM charges WHERE id IN (' . implode(',', array_map('intval', $all)) . ') ORDER BY id');
         $due = max(date('Y-m-d'), (string)min(array_column($lines, 'period_start')));
         $crow = oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$client]) ?: ['name' => $cname];
-        try { $made = cm_xero_create_draft($xero, $crow, $lines, $due, '', cm_setting($pdo, 'xero_tax_type') ?: 'OUTPUT2'); } catch (RuntimeException $e) { throw new InvalidArgumentException($e->getMessage()); }
+        $ref = cm_post('reference', 255); if ($ref === '') $ref = cm_charges_reference($pdo, $all);
+        try { $made = cm_xero_create_draft($xero, $crow, $lines, $due, $ref, cm_client_tax_type($pdo, $crow)); } catch (RuntimeException $e) { throw new InvalidArgumentException($e->getMessage()); }
         $inv = $made['number'] !== '' ? $made['number'] : 'DRAFT ' . substr($made['id'], 0, 8); $xid = $made['id'];
         $pdo->prepare('UPDATE charges SET xero_invoice_number=?, xero_invoice_id=? WHERE id IN (' . implode(',', array_map('intval', $all)) . ')')->execute([$inv, $xid]);
     }

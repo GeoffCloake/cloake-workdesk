@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -1463,7 +1463,7 @@ function protectedChecksums() {
     for (const [label, href] of links) { const r = await go(page, href); assert(r.status() === 200, label + ' → ' + r.status()); }
     await go(page, 'index.php?page=more');
     const more = await page.$$eval('main .more-list a', a => a.map(x => [x.querySelector('strong').textContent.trim(), x.getAttribute('href')]));
-    for (const want of ['Workload', 'Task templates', 'Staff & hours', 'Pending Invoicing', 'Services', 'Domains', 'Xero connection', 'Month-end claims', 'Billing settings', 'Account Items', 'Release check', 'Enquiries']) assert(more.find(x => x[0] === want), 'missing from More: ' + want);
+    for (const want of ['Workload', 'Task templates', 'Staff & hours', 'Pending Invoicing', 'Services', 'Domains', 'Xero connection', 'Xero sync', 'Month-end claims', 'Billing settings', 'Account Items', 'Release check', 'Enquiries']) assert(more.find(x => x[0] === want), 'missing from More: ' + want);
     for (const [label, href] of more) {
       const r = await go(page, href); assert(r.status() === 200, label + ' → ' + r.status());
       if (!['Enquiries', '＋ Quick Enquiry'].includes(label)) assert(await page.locator('aside.side a.nav.current').innerText() === 'More…', label + ': More… not highlighted');
@@ -1589,12 +1589,13 @@ function protectedChecksums() {
     const addDays = n => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date(Date.now() + n * 86400000));
     const xc = +one(`SELECT id FROM clients WHERE LOWER(COALESCE(status,''))<>'archive' AND (xero_contact_id IS NULL OR xero_contact_id='') ORDER BY id DESC LIMIT 1`);
     const svc = (domain, client, price) => { sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,price_ex_gst,cycle_months,next_period_start,source_system,created_at) VALUES (${client},'hosting','${domain}','active',1,0,${price},12,'${todayNZ}','app',NOW())`); return num(`SELECT id FROM services WHERE domain='${domain}'`); };
-    const draftFor = async (domain, by = 'Test XD') => {
+    const draftFor = async (domain, by = 'Test XD', ref = '') => {
       await go(P, 'index.php?page=invoicing');
       const sec = P.locator('[data-testid=invoice-client]', { hasText: domain });
       for (const b of await sec.locator('input[name="keys[]"]').all()) await b.uncheck();
       await sec.locator('li.invoice-line', { hasText: domain }).locator('input[name="keys[]"]').check();
       await sec.locator('input[name=recorded_by]').fill(by);
+      if (ref) await sec.locator('input[name=reference]').fill(ref);
       await Promise.all([P.waitForNavigation(), sec.locator('[data-testid=xero-draft]').click()]);
     };
     await test('XD01', 'Migration 008 (charges.xero_invoice_id); More lists Xero connection; not set up → no "Create Xero draft" button on Pending Invoicing', async () => {
@@ -1632,7 +1633,7 @@ function protectedChecksums() {
       const post = mlog().filter(r => r.p === '/api/Invoices'); assert(post.length === 1, 'posts ' + post.length);
       const inv = JSON.parse(post[0].b).Invoices[0];
       assert(inv.Status === 'DRAFT' && inv.Type === 'ACCREC' && inv.LineAmountTypes === 'Exclusive' && inv.LineItems.length === 1 && inv.LineItems[0].UnitAmount === 240 && inv.LineItems[0].AccountCode === '43504' && /WEBSITE HOSTING - test-xd04\.example\.nz/.test(inv.LineItems[0].Description), 'payload ' + JSON.stringify(inv));
-      assert(inv.LineItems[0].TaxType === 'OUTPUT2' && await P.locator('[data-testid=draft-warn]').count() === 0, 'tax type / unexpected warning');
+      assert(inv.LineItems[0].TaxType === 'OUTPUT2' && await P.locator('[data-testid=draft-warn]').count() === 0, 'tax type / unexpected warning'); assert(inv.Reference === 'test-xd04.example.nz', 'reference ' + inv.Reference);
       assert(inv.Contact.Name === one(`SELECT name FROM clients WHERE id=${xc}`) && post[0].tenant === '11111111-2222-3333-4444-555555555555' && inv.DueDate === todayNZ, 'contact/tenant/due');
       const c = sql(`SELECT xero_invoice_number, LENGTH(xero_invoice_id), recorded_by, amount_ex_gst FROM charges WHERE source_kind='service' AND source_id=${s1}`);
       assert(c.length === 1 && c[0][0] === 'INV-9001' && c[0][1] === '36' && c[0][2] === 'Test XD' && +c[0][3] === 240, 'charge ' + c);
@@ -1659,6 +1660,58 @@ function protectedChecksums() {
       await go(P, 'billing-settings.php'); assert(await P.inputValue('#xero_tax_type') === 'OUTPUT2', 'default not shown');
       await P.fill('#xero_tax_type', 'bad type'); await P.fill('#updated_by', 'Test'); await save(P);
       assert(/tax type/.test(await P.locator('.alert').innerText()), 'bad tax type accepted');
+    });
+    const sync = async () => { await go(P, 'xero-sync.php'); return P.locator('main').innerText(); };
+    const clientMk = (name, extra = {}) => { const cols = { source_system: 'app', source_id: 'test-' + name.replace(/\W+/g, '-').toLowerCase(), name, status: 'active', ...extra };
+      sql(`INSERT INTO clients (${Object.keys(cols).join(',')},created_at) VALUES (${Object.values(cols).map(v => `'${esc(String(v))}'`).join(',')},NOW())`); return num(`SELECT id FROM clients WHERE source_id='${cols.source_id}'`); };
+    await test('XS01', 'Xero sync: a client with the same name (ignoring Ltd/Limited) is a probable match — linking stores the Xero ContactID (audited, Undo restores); a Xero-only contact can be added to Workdesk', async () => {
+      const cm = clientMk('Test Sync Match Ltd', { email: 'match@example.nz' });
+      let t = await sync(); assert(await P.locator('[data-testid=need-reconnect]').count() === 0, 'asks to reconnect although the new permissions were granted');
+      const box = P.locator(`[data-testid=sync-probable] input[value^="${cm}:"]`); assert(await box.count() === 1 && await box.isChecked(), 'not a ticked probable match');
+      await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-probable] button[type=submit]')]);
+      assert(one(`SELECT xero_contact_id FROM clients WHERE id=${cm}`) === 'aaaaaaaa-0000-4000-8000-000000000001', 'not linked');
+      await undoClick(P); assert(num(`SELECT xero_contact_id IS NULL FROM clients WHERE id=${cm}`) === 1, 'undo');
+      await sync(); await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-probable] button[type=submit]')]);
+      await P.locator('[data-testid=sync-xero-only] summary').click();
+      await Promise.all([P.waitForNavigation(), P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Xero Only Person' }).locator('button').click()]);
+      assert(one(`SELECT CONCAT(name,'|',email,'|',xero_contact_id) FROM clients WHERE xero_contact_id='aaaaaaaa-0000-4000-8000-000000000002'`) === 'Test Xero Only Person|only@example.nz|aaaaaaaa-0000-4000-8000-000000000002', 'not added');
+    });
+    await test('XS02', 'Create in Xero: ticked clients become Xero contacts (name, email) and are linked; a linked client renamed in Workdesk shows as different and "Update Xero from Workdesk" sends the new name', async () => {
+      const cn = clientMk('Test Sync New Co', { email: 'new@example.nz' });
+      await sync(); await P.locator('[data-testid=sync-missing]').evaluate(d => d.open = true);
+      await P.check(`[data-testid=sync-missing] input[value="${cn}"]`); await Promise.all([P.waitForNavigation(), P.click('[data-testid=sync-missing] button[type=submit]')]);
+      const xid = one(`SELECT xero_contact_id FROM clients WHERE id=${cn}`); assert(/^bbbbbbbb-/.test(xid || ''), 'not created/linked ' + xid);
+      const post = JSON.parse(mlog().filter(r => r.p === '/api/Contacts' && r.m === 'POST').pop().b).Contacts[0]; assert(post.Name === 'Test Sync New Co' && post.EmailAddress === 'new@example.nz' && !post.ContactID, 'create payload');
+      sql(`UPDATE clients SET name='Test Sync New Company' WHERE id=${cn}`);
+      await sync(); const row = P.locator('[data-testid=sync-diff] li', { hasText: 'Test Sync New Company' }); assert(await row.count() === 1, 'difference not shown');
+      await Promise.all([P.waitForNavigation(), row.locator('button').click()]);
+      const up = JSON.parse(mlog().filter(r => r.p === '/api/Contacts' && r.m === 'POST').pop().b).Contacts[0]; assert(up.ContactID === xid && up.Name === 'Test Sync New Company', 'update payload');
+      assert(await P.locator('[data-testid=sync-diff]').count() === 0, 'still different after update');
+    });
+    await test('XS03', 'Account codes and tax types are checked against Xero: 43504 and both tax types ✓, an account Xero doesn\'t have (99990 on a service) ✗', async () => {
+      await sync();
+      assert(await P.getAttribute('[data-testid=sync-accounts] [data-code="43504"]', 'data-ok') === '1' && await P.getAttribute('[data-testid=sync-accounts] [data-code="99990"]', 'data-ok') === '0', 'accounts');
+      assert(await P.getAttribute('[data-testid=sync-accounts] [data-tax="OUTPUT2"]', 'data-ok') === '1' && await P.getAttribute('[data-testid=sync-accounts] [data-tax="ZERORATEDOUTPUT"]', 'data-ok') === '1', 'tax types');
+    });
+    await test('XS04', 'Overseas client (postal country United Kingdom): Pending Invoicing shows zero rated with incl = ex; the draft goes as ZERORATEDOUTPUT; a typed Reference is used instead of the automatic one', async () => {
+      const uk = clientMk('Test Overseas UK', { postal_country: 'United Kingdom' });
+      svc('test-xs04.example.uk', uk, 100);
+      await go(P, 'index.php?page=invoicing'); const sec = P.locator('[data-testid=invoice-client]', { hasText: 'test-xs04.example.uk' });
+      assert(/overseas \(United Kingdom\)/.test(await sec.locator('[data-testid=overseas]').innerText()) && /\$100\.00 incl/.test(await sec.innerText()), 'overseas display');
+      await draftFor('test-xs04.example.uk', 'Test XD', 'Order UK-7');
+      const inv = JSON.parse(mlog().filter(r => r.p === '/api/Invoices').pop().b).Invoices[0];
+      assert(inv.LineItems[0].TaxType === 'ZERORATEDOUTPUT' && inv.Reference === 'Order UK-7', 'payload ' + JSON.stringify(inv.LineItems[0]) + ' ' + inv.Reference);
+      await undoClick(P);
+      await go(P, 'index.php?page=client&id=' + uk); assert(/Zero rated — overseas \(United Kingdom\)/.test(await P.locator('main').textContent()), 'client page');
+    });
+    await test('XS05', 'A connection made before v0.18 (without the contacts/settings permissions) is asked to reconnect; creating contacts is refused until then', async () => {
+      const j = JSON.parse(fs.readFileSync(XJ, 'utf8')); const keep = j.scope; j.scope = 'offline_access accounting.invoices accounting.contacts.read'; fs.writeFileSync(XJ, JSON.stringify(j));
+      await sync(); assert(await P.locator('[data-testid=need-reconnect]').count() === 1, 'no reconnect notice');
+      const c2 = clientMk('Test Sync Blocked'); const csrf = await csrfOf(P);
+      const r = await postAndGo(P, 'xero-sync.php', { csrf, action: 'create', 'client_ids[]': String(c2) });
+      assert(/Reconnect Xero first/.test(await r.text()) && num(`SELECT xero_contact_id IS NULL FROM clients WHERE id=${c2}`) === 1, 'created without permission');
+      await go(P, 'xero.php'); assert(await P.locator('[data-testid=xero-rescope]').count() === 1, 'xero page notice');
+      j.scope = keep; fs.writeFileSync(XJ, JSON.stringify(j));
     });
     await test('XD06', 'An expired access token is renewed (rotated refresh token saved); a dead connection asks to reconnect and records nothing; Disconnect removes access and the button', async () => {
       const j = JSON.parse(fs.readFileSync(XJ, 'utf8')); j.expires_at = 0; fs.writeFileSync(XJ, JSON.stringify(j)); const oldRefresh = j.refresh_token;

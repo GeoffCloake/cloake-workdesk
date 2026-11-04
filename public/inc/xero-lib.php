@@ -5,8 +5,9 @@ declare(strict_types=1);
  *
  *  - The Xero app's client ID / secret and the tokens live in private/xero.json (next to config.php, outside the
  *    web root, mode 600) — never in the database, never shown back on screen.
- *  - Scopes: offline_access accounting.invoices accounting.contacts.read (granular scopes; apps made since March 2026
- *    cannot use the old broad ones). Override with 'xero_scopes' in config.php if Xero changes them again.
+ *  - Scopes: offline_access accounting.invoices accounting.contacts accounting.settings.read (granular scopes; apps made
+ *    since March 2026 cannot use the old broad ones). Override with 'xero_scopes' in config.php if Xero changes them again.
+ *    The scopes Xero actually granted are kept (x['scope']); Xero sync asks to reconnect when one is missing.
  *  - The only status ever sent is DRAFT (cm_xero_create_draft refuses anything else). Nothing is approved, emailed or paid.
  *  - Contact: the client's "Xero contact reference" if it is a Xero ContactID, else an exact name match in Xero.
  *    No match → refused (so no duplicate contacts are made) — except in Xero's Demo Company, where the name is sent
@@ -15,7 +16,8 @@ declare(strict_types=1);
  */
 if (PHP_SAPI !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === basename(__FILE__)) { http_response_code(404); exit; }
 
-const CM_XERO_SCOPES = 'offline_access accounting.invoices accounting.contacts.read';
+// v0.18: + accounting.contacts (create/update contacts from Xero sync) and accounting.settings.read (check account codes and tax rates)
+const CM_XERO_SCOPES = 'offline_access accounting.invoices accounting.contacts accounting.settings.read';
 
 function cm_xero_file(): string { return dirname(CLOAKE_CONFIG_FILE) . '/xero.json'; }
 
@@ -67,6 +69,9 @@ function cm_xero_state(?array $x = null): string
     return !empty($x['refresh_token']) && !empty($x['tenant_id']) ? 'connected' : 'app';
 }
 
+/** True when the connection was granted this scope (connections made before v0.18 have no record → false for the new ones). */
+function cm_xero_has_scope(array $x, string $scope): bool { return in_array($scope, preg_split('/\s+/', trim((string)($x['scope'] ?? ''))), true); }
+
 function cm_xero_is_demo(array $x): bool { return (bool)preg_match('/demo company/i', (string)($x['tenant_name'] ?? '')); }
 
 /** Minimal HTTPS call. Returns [status, decoded body|null, raw]. */
@@ -102,6 +107,7 @@ function cm_xero_exchange_code(array $x, string $code): array
 function cm_xero_store_tokens(array $x, array $j): array
 {
     $x['access_token'] = (string)$j['access_token'];
+    if (!empty($j['scope'])) $x['scope'] = (string)$j['scope'];
     if (!empty($j['refresh_token'])) $x['refresh_token'] = (string)$j['refresh_token'];   // Xero rotates the refresh token on every use
     $x['expires_at'] = time() + max(60, (int)($j['expires_in'] ?? 1800)) - 60;
     return $x;
@@ -171,4 +177,101 @@ function cm_xero_create_draft(array &$x, array $client, array $lines, string $du
         if (!empty($sent['TaxType']) && (string)($got['TaxType'] ?? '') !== $sent['TaxType']) $warn[] = 'Xero did not apply tax type ' . $sent['TaxType'] . ' on line ' . ($i + 1) . ' — check GST on the draft.';
     }
     return ['id' => (string)$out['InvoiceID'], 'number' => (string)($out['InvoiceNumber'] ?? ''), 'warnings' => array_values(array_unique($warn)), 'url' => 'https://go.xero.com/AccountsReceivable/Edit.aspx?InvoiceID=' . rawurlencode((string)$out['InvoiceID'])];
+}
+
+
+/* ---------------- v0.18: contacts sync, accounts and tax rates ---------------- */
+
+/** The client's Xero ContactID if one is linked (a GUID in xero_contact_id), else ''. */
+function cm_client_xero_id(array $c): string
+{
+    $r = strtolower(trim((string)($c['xero_contact_id'] ?? '')));
+    return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $r) ? $r : '';
+}
+
+/** Name for matching: lower case, no punctuation, "&" = "and", without Ltd/Limited/The. */
+function cm_norm_name(string $n): string
+{
+    $n = mb_strtolower(trim($n));
+    $n = str_replace('&', ' and ', $n);
+    $n = preg_replace('/[^\p{L}\p{N} ]+/u', ' ', $n);
+    $n = preg_replace('/\b(ltd|limited|the|nz|co)\b/u', ' ', $n);
+    return trim(preg_replace('/\s+/', ' ', $n));
+}
+
+/** All Xero contacts (not archived), paged 100 at a time. */
+function cm_xero_contacts_all(array &$x): array
+{
+    $all = [];
+    for ($page = 1; $page <= 50; $page++) {
+        [$st, $j] = cm_xero_api($x, 'GET', '/Contacts?page=' . $page . '&includeArchived=false');
+        if ($st !== 200) throw new RuntimeException('Could not read contacts from Xero (' . $st . ').');
+        $batch = $j['Contacts'] ?? [];
+        foreach ($batch as $c) $all[] = ['id' => strtolower((string)$c['ContactID']), 'name' => (string)($c['Name'] ?? ''), 'email' => (string)($c['EmailAddress'] ?? ''), 'number' => (string)($c['ContactNumber'] ?? ''), 'status' => (string)($c['ContactStatus'] ?? 'ACTIVE'), 'customer' => !empty($c['IsCustomer'])];
+        if (count($batch) < 100) break;
+    }
+    return $all;
+}
+
+/** Xero's contact fields from a Workdesk client (only what Workdesk has). */
+function cm_xero_contact_body(array $c): array
+{
+    $b = ['Name' => trim((string)$c['name'])];
+    if (filter_var(trim((string)($c['email'] ?? '')), FILTER_VALIDATE_EMAIL)) $b['EmailAddress'] = trim((string)$c['email']);
+    if (trim((string)($c['phone'] ?? '')) !== '') $b['Phones'] = [['PhoneType' => 'DEFAULT', 'PhoneNumber' => trim((string)$c['phone'])]];
+    $addr = array_filter(['AddressType' => 'POBOX', 'AddressLine1' => trim((string)($c['postal_address_1'] ?? '')), 'AddressLine2' => trim((string)($c['postal_address_2'] ?? '')), 'AddressLine3' => trim((string)($c['postal_address_3'] ?? '')), 'City' => trim((string)($c['postal_city_town'] ?? '')), 'Region' => trim((string)($c['postal_region'] ?? '')), 'PostalCode' => trim((string)($c['postal_code'] ?? '')), 'Country' => trim((string)($c['postal_country'] ?? ''))], fn($v) => $v !== '');
+    if (count($addr) > 1) $b['Addresses'] = [$addr];
+    return $b;
+}
+
+/** Create (or, with $contactId, update name/email/phone/address of) a Xero contact. Returns the ContactID. Never deletes or archives. */
+function cm_xero_save_contact(array &$x, array $client, string $contactId = ''): string
+{
+    $body = cm_xero_contact_body($client);
+    if ($body['Name'] === '') throw new RuntimeException('The client has no name.');
+    if ($contactId !== '') $body['ContactID'] = $contactId;
+    [$st, $j] = cm_xero_api($x, 'POST', '/Contacts?summarizeErrors=true', ['Contacts' => [$body]]);
+    $out = $j['Contacts'][0] ?? null;
+    if ($st === 403) throw new RuntimeException('Xero did not allow changing contacts — reconnect Xero (More › Xero connection) so Workdesk gets the contacts permission.');
+    if ($st !== 200 || !$out || empty($out['ContactID'])) throw new RuntimeException('Xero did not save the contact “' . $body['Name'] . '”: ' . ($j['Elements'][0]['ValidationErrors'][0]['Message'] ?? ($j['Message'] ?? ('HTTP ' . $st))));
+    return strtolower((string)$out['ContactID']);
+}
+
+/** Xero chart of accounts and tax rates (for the check on Xero sync). */
+function cm_xero_accounts(array &$x): array
+{
+    [$st, $j] = cm_xero_api($x, 'GET', '/Accounts');
+    if ($st !== 200) throw new RuntimeException('Could not read accounts from Xero (' . $st . ').');
+    $o = []; foreach ($j['Accounts'] ?? [] as $a) if (($a['Code'] ?? '') !== '') $o[(string)$a['Code']] = ['name' => (string)($a['Name'] ?? ''), 'status' => (string)($a['Status'] ?? ''), 'tax' => (string)($a['TaxType'] ?? '')];
+    return $o;
+}
+function cm_xero_taxrates(array &$x): array
+{
+    [$st, $j] = cm_xero_api($x, 'GET', '/TaxRates');
+    if ($st !== 200) throw new RuntimeException('Could not read tax rates from Xero (' . $st . ').');
+    $o = []; foreach ($j['TaxRates'] ?? [] as $t) $o[(string)$t['TaxType']] = ['name' => (string)($t['Name'] ?? ''), 'status' => (string)($t['Status'] ?? ''), 'rate' => (float)($t['EffectiveRate'] ?? 0)];
+    return $o;
+}
+
+/* ---------------- v0.18: tax by country (kept simple — overseas clients are rare) ---------------- */
+
+/** The client's country if it is clearly outside New Zealand (postal country first, else physical), else ''. Blank / NZ / a town → NZ. */
+function cm_client_overseas(array $c): string
+{
+    foreach (['postal_country', 'physical_country'] as $f) {
+        $v = trim((string)($c[$f] ?? ''));
+        if ($v === '') continue;
+        $n = mb_strtolower($v);
+        if (preg_match('/^(new zealand|nz|aotearoa|aotearoa new zealand)$/u', $n)) return '';
+        foreach (CM_OVERSEAS_COUNTRIES as $k) if ($n === $k) return $v;
+        return '';   // not recognised as another country (e.g. a town or postcode typed in the country box) → NZ
+    }
+    return '';
+}
+const CM_OVERSEAS_COUNTRIES = ['united kingdom', 'uk', 'england', 'scotland', 'wales', 'northern ireland', 'great britain', 'gb', 'ireland', 'australia', 'united states', 'usa', 'us', 'canada', 'netherlands', 'nederland', 'nederlands', 'the netherlands', 'germany', 'france', 'italy', 'spain', 'switzerland', 'sweden', 'norway', 'denmark', 'singapore', 'hong kong', 'japan', 'china', 'fiji', 'cook islands', 'samoa', 'tonga'];
+
+/** The Xero tax type for a client's invoice lines: overseas → Billing settings "overseas" type, else the default (15% GST on Income). */
+function cm_client_tax_type(PDO $pdo, array $c): string
+{
+    return cm_client_overseas($c) !== '' ? (cm_setting($pdo, 'xero_tax_type_overseas') ?: 'ZERORATEDOUTPUT') : (cm_setting($pdo, 'xero_tax_type') ?: 'OUTPUT2');
 }

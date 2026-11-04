@@ -20,6 +20,7 @@ $groups = [
         ['claims.php', 'Month-end claims', 'Hours and progress claims for monthly-billed tasks'],
         ['billing-settings.php', 'Billing settings', 'Lead time, Xero accounts, hourly rate, materials markup'],
         ['xero.php', 'Xero connection', 'Create draft invoices in Xero from Pending Invoicing'],
+        ['xero-sync.php', 'Xero sync', 'Match clients with Xero contacts; check account codes and tax types'],
         [route('items'), 'Account Items', 'Rates and catalogue'],
     ],
     'System' => [
