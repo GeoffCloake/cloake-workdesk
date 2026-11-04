@@ -1,3 +1,22 @@
+# Test report — v0.18.0 · build 20261104.2
+
+**Result: 131 of 131 tests passed** on your real-data replica (MySQL 8.0.46) and on synthetic data (MariaDB 10.11), and on the copy installed by `cm-update v0.18.0` over v0.17.1. No database change; `cm-update v0.17.1` goes back and verifies.
+Xero calls run against the local stand-in (`tests/xero-mock.php`), now also playing Xero's contacts, chart of accounts and tax rates.
+
+| ID | Proven |
+|---|---|
+| XS01 | Same name ignoring "Ltd/Limited" → ticked probable match; Link stores the ContactID (audited); Undo clears it; a Xero-only contact → Add to Workdesk creates the client with name, email and link |
+| XS02 | Create in Xero sends name + email (no ContactID) and links the new contact; renaming the client shows it under "different"; Update Xero sends the ContactID with the new name; then no difference |
+| XS03 | Account 43504 ✓, an account Xero lacks (99990 on a service) ✗; OUTPUT2 and ZERORATEDOUTPUT ✓ |
+| XS04 | Postal country United Kingdom → Pending Invoicing "overseas (United Kingdom) — zero rated", $100.00 incl = ex; draft line ZERORATEDOUTPUT; a typed Reference is sent; client page shows zero rated |
+| XS05 | A pre-v0.18 connection (old permissions) → "Reconnect" on Xero sync and Xero connection; Create in Xero refused, nothing linked |
+| XD04 | (changed) the automatic Reference is the service's domain |
+| W01 | More… lists Xero sync |
+
+On your data, overseas detection picks out 2 active clients (United Kingdom; Netherlands — its postal country is "Nederlands"). Every other client stays on 15% GST.
+
+---
+
 # Test report — v0.17.1 · build 20261104.1
 
 **Result: 126 of 126 tests passed** on your real-data replica (MySQL 8.0.46) and on synthetic data (MariaDB 10.11), and on the copy installed by `cm-update v0.17.1` over v0.17.0. No database change. `cm-update v0.17.0` goes back and verifies.

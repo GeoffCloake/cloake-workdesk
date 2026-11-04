@@ -3,8 +3,31 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.18.0 · build 20261104.2 — 4 November 2026
+**Status: built and tested locally (Xero calls against the local stand-in).** 131/131 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.17.1 with `cm-update` and the full suite passed on the installed copy; `cm-update v0.17.1` goes back. **No database change.**
+**Reconnect Xero once** after installing (new permissions: create/update contacts, read account codes and tax rates).
+
+### Added — Xero sync (More… › Billing › Xero sync)
+- Reads your Xero contacts live and compares them with your active clients:
+  - **Probable matches** — same name (ignoring case, punctuation, Ltd/Limited), same email, or the old contact number → tick and **Link** (stores Xero's ContactID on the client; audited; Undo works).
+  - **Active clients not in Xero** → tick and **Create in Xero** (name, email, phone, postal address), then linked.
+  - **Linked, but different** (name or email) → **Update Xero from Workdesk**.
+  - **Linked contact not found in Xero** (archived/deleted there) → Unlink.
+  - **Xero contacts with no client** → **Add to Workdesk**.
+- **Account codes and tax types** used by Workdesk (Billing settings and every live service) are checked against Xero's chart of accounts and tax rates: ✓ name, or ✗ not in Xero / not active.
+- Nothing changes without a click. Workdesk never deletes or archives anything in Xero and never overwrites Workdesk data from Xero.
+
+### Added — tax by country (kept simple)
+- Clients default to **15% GST on Income**. A client whose postal country (else physical country) is clearly another country — e.g. United Kingdom — is **zero rated**: Billing settings › *Xero tax type for overseas clients*, default **ZERORATEDOUTPUT**. Pending Invoicing shows "overseas (…) — zero rated" and incl = ex; the client page shows it. A town or postcode typed in the country box counts as New Zealand. On your data: 2 active clients (United Kingdom, Netherlands).
+
+### Added — invoice Reference on Xero drafts
+- Filled in automatically: the task's purchase order no (else job no, else title), or the service's domain; several lines → joined. Type your own in **Xero reference** on Pending Invoicing to override.
+
+### Changed
+- Client page: "Xero contact" shows "Linked (Xero sync)" when linked (the old text "null" from the import is no longer shown).
+
 ## v0.17.1 · build 20261104.1 — 4 November 2026
-**Status: built and tested locally.** 126/126 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.17.0 with `cm-update` (no database change) and the full suite passed on the installed copy; `cm-update v0.17.0` goes back cleanly.
+**Status: built and tested locally; superseded by v0.18.0 before install (install v0.18.0 directly).** 126/126 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.17.0 with `cm-update` (no database change) and the full suite passed on the installed copy; `cm-update v0.17.0` goes back cleanly.
 Fixes from your real Xero Demo Company test (draft INV-0044: no account, GST $0).
 
 ### Fixed
