@@ -1,3 +1,15 @@
+# Test report — v0.18.1 · build 20261104.3
+
+**Result: 132 of 132 tests passed** on your real-data replica (MySQL 8.0.46), on synthetic data (MariaDB 10.11), and on the copy installed by `cm-update v0.18.1` over v0.18.0. No database change; `cm-update v0.17.0` goes back and verifies.
+
+| ID | Proven (new or changed) |
+|---|---|
+| XS01 | (changed) the client is flagged "? Probable match" with its match ticked; Link → flagged "✓ In sync" |
+| XS02 | (changed) the "Not in Xero" filter shows only those; the client page says "✗ Not linked to Xero"; after Create → linked; renamed → flagged "≠ Different"; Update Xero → "✓ In sync"; client page "✓ Linked to Xero" |
+| XS06 | A supplier (not a customer in Xero) is under "Other Xero contacts — no action needed", not under customers; "Not a client" moves a customer to "Marked not a client" without any change sent to Xero; "Show again" brings it back |
+
+---
+
 # Test report — v0.18.0 · build 20261104.2
 
 **Result: 131 of 131 tests passed** on your real-data replica (MySQL 8.0.46) and on synthetic data (MariaDB 10.11), and on the copy installed by `cm-update v0.18.0` over v0.17.1. No database change; `cm-update v0.17.1` goes back and verifies.

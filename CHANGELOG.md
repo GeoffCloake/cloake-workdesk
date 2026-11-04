@@ -3,8 +3,21 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.18.1 · build 20261104.3 — 4 November 2026
+**Status: built and tested locally (Xero calls against the local stand-in).** 132/132 on MySQL 8.0.46 (real-data replica) and MariaDB; installed with `cm-update v0.18.1` and the full suite passed on the installed copy; `cm-update v0.17.0` goes back. **No database change.** Includes everything in v0.18.0 and v0.17.1 — install this one.
+
+### Changed — Xero sync shows what is in sync and what to do (your request)
+- **One list of every active client**, each flagged: **✓ In sync** · **≠ Different** (name/email) → *Update Xero* · **? Probable match** → tick, *Link ticked matches* · **✗ Not in Xero** → tick, *Create ticked in Xero* · **⚠ Contact gone from Xero** → *Unlink*. The line under each name says what differs or what to do.
+- Counts at the top (In sync / Need action / Xero customers with no client) and filter chips: All, **Need action**, and each status.
+- **Client page:** "✓ Linked to Xero" or "✗ Not linked to Xero" (and zero rated if overseas), with a link to Xero sync.
+- Account codes and tax types that fail the check now say what to do.
+
+### Changed — Xero contacts that aren't clients (your note)
+- **Xero customers with no client** (may need action): *Add to Workdesk*, or **Not a client** — hides it from the list for good (remembered by Workdesk; Xero is not changed), with *Show again* under "Marked not a client".
+- **Other Xero contacts** (suppliers etc. — not customers in Xero) are listed apart, **no action needed**.
+
 ## v0.18.0 · build 20261104.2 — 4 November 2026
-**Status: built and tested locally (Xero calls against the local stand-in).** 131/131 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.17.1 with `cm-update` and the full suite passed on the installed copy; `cm-update v0.17.1` goes back. **No database change.**
+**Status: built and tested locally; superseded by v0.18.1 (install v0.18.1).** 131/131 on MySQL 8.0.46 (real-data replica) and MariaDB; installed over v0.17.1 with `cm-update` and the full suite passed on the installed copy; `cm-update v0.17.1` goes back. **No database change.**
 **Reconnect Xero once** after installing (new permissions: create/update contacts, read account codes and tax rates).
 
 ### Added — Xero sync (More… › Billing › Xero sync)
