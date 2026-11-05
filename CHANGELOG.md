@@ -3,6 +3,17 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.20.0 · build 20261105.3 — 5 November 2026
+**Status: built and tested locally.** 141/141 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data; uapi and whmapi1 played by stand-ins). **No database change.** `cm-update v0.19.0` goes back.
+
+### Added — what's provisioned on the server (your request)
+- **Nightly read-only check, run by root** (`deploy/install-email-inventory.sh`, once in WHM Terminal): for every cPanel account it lists the domains, **mailboxes** and **forwards** (cPanel's own `uapi`; never passwords), plus **package, disk used / quota and suspended** (`whmapi1 listaccts`). It writes one file into Workdesk's private folder; **Workdesk holds no server credential** and changes nothing on the server. The script is copied to a root-only place, so nothing in the cloakecrea account can change what root runs.
+- **Service page › On the server:** the account, package, disk, each mailbox and each forward (forwards marked free), and a flag when the mailbox count recorded in Workdesk differs.
+- **Client page:** each hosting/email service shows "cPanel user · 3 mbx · 2 fwd" (and suspended).
+- **More… › cPanel check:** mailbox counts to update (tick → **Update mailbox counts**, one undoable change; prices untouched), billed services suspended on the server, services with no account found, and cPanel accounts no service points to (possibly not billed).
+- Release check shows when the server file was last written.
+- Invoices are unchanged: the line still shows only domain, period, included domains and mailboxes.
+
 ## v0.19.0 · build 20261105.2 — 5 November 2026
 **Status: built and tested locally (Xero calls against the local stand-in).** 139/139 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **Database migration 009** (add-only: one new table, two new columns; rollback tested). Includes v0.18.2. **No Xero reconnect needed** — Xero items come under the invoices permission Workdesk already has.
 

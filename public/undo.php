@@ -66,7 +66,7 @@ try {
         $summary = str_starts_with((string)$ev['summary'], 'Undo: ') ? substr((string)$ev['summary'], 6) : 'Undo: ' . $ev['summary'];
         cm_audit($pdo, $ev['event_kind'], ['client_id' => $ev['client_id']], $summary, ['_rows' => $reverseRows]);
         $pdo->commit();
-        header('Location: ' . ($ev['event_kind'] === 'services_plans_matched' ? 'plans.php?match=1' : route('templates')), true, 303); exit;
+        header('Location: ' . match ($ev['event_kind']) { 'services_plans_matched' => 'plans.php?match=1', 'services_mailboxes_updated' => 'cpanel-check.php', default => route('templates') }, true, 303); exit;
     }
     $byRowId = in_array($table, ['breakdown_items', 'billing_milestones', 'task_templates', 'enquiry_task_plans', 'services', 'job_items', 'staff', 'plans'], true);
     $rowId = (int)($byRowId ? ($payload['row_id'] ?? 0) : match ($table) {

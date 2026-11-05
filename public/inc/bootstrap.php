@@ -148,3 +148,4 @@ require_once __DIR__ . '/materials-lib.php';
 require_once __DIR__ . '/domains-lib.php';
 require_once __DIR__ . '/xero-lib.php';
 require_once __DIR__ . '/plans-lib.php';
+require_once __DIR__ . '/cpanel-lib.php';

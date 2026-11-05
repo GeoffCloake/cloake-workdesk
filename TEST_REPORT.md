@@ -1,3 +1,15 @@
+# Test report — v0.20.0 · build 20261105.3
+
+**Result: 141 of 141 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. No database change. The root installer was rehearsed: copied to /usr/local/sbin/cm-email-inventory (root, 700), nightly job in /etc/cron.d (02:17), run once, and `--remove` takes both away.
+
+| ID | Proven |
+|---|---|
+| C01 | With stand-ins for uapi and whmapi1: no file → cPanel check says so; the script writes one file (mode 600) with each account's domains, mailboxes (the account's own system mailbox left out), forwards, package, disk and suspended; the root user is skipped; no password field anywhere |
+| C02 | Service page lists the mailboxes and forwards, "package …", "512 MB of 2,000 MB", "3 mailboxes · 1 forward" and a recorded-count mismatch; cPanel check lists it (and the account with no service); Update sets mailboxes 1 → 3, price unchanged; Undo → 1; with 3 the Xero line says "Includes 3 mailboxes"; client page "cPanel testacct1 · 3 mbx · 1 fwd"; release check shows the file time |
+| Layout | cPanel check passes the 320/375/390/430/1280 px checks |
+
+---
+
 # Test report — v0.19.0 · build 20261105.2
 
 **Result: 139 of 139 tests passed** on synthetic data on MariaDB 10.11 and on MySQL 8.0.46. Migration 009 applied by the runner on both; rolled back and re-applied on MySQL 8 (table and columns dropped, then recreated with the six plans).

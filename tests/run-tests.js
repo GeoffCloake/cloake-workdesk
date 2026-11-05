@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', 'plans.php', 'plans.php?match=1', 'plans.php?edit=new', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', 'plans.php', 'plans.php?match=1', 'plans.php?edit=new', 'cpanel-check.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -1278,6 +1278,40 @@ function protectedChecksums() {
     await go(P, 'plans.php?edit=new'); await P.fill('#code', 'BAD CODE'); await P.fill('#name', 'x'); await save(P); assert(/letters, numbers and dashes/.test(await P.locator('.alert').innerText()), 'bad code');
     await P.fill('#code', 'HOST-STD'); await save(P); assert(/already has the code/.test(await P.locator('.alert').innerText()), 'duplicate');
     assert(num(`SELECT COUNT(*) FROM plans`) === 6, 'plan added');
+  });
+  /* ---------- v0.20: cPanel inventory (nightly root job → private file; Workdesk read-only) ---------- */
+  const INV = '/home/cloakecrea/cloake-manager/private/email-inventory.json';
+  await test('C01', 'Nightly inventory script (with stand-ins for uapi and whmapi1): one file, mode 600, with each account\'s domains, mailboxes (not the system mailbox, no passwords), forwards, package, disk and suspension', async () => {
+    try { fs.unlinkSync(INV); } catch (e) { }
+    await go(P, 'cpanel-check.php'); assert(await P.locator('[data-testid=cpanel-missing]').count() === 1, 'no-file notice');
+    const users = path.join(OUT, 'cpusers'); fs.mkdirSync(users, { recursive: true }); for (const u of ['testacct1', 'testacct2', 'root']) fs.writeFileSync(path.join(users, u), '');
+    const r = execFileSync('php', [path.join(__dirname, '../deploy/email-inventory.php')], { encoding: 'utf8', env: { ...process.env, CM_UAPI: path.join(__dirname, 'fixture/fake-uapi.sh'), CM_WHMAPI: path.join(__dirname, 'fixture/fake-whmapi1.sh'), CM_USERS_DIR: users, CM_EMAIL_OUT: INV } });
+    assert(/2 accounts, 3 mailboxes, 1 forwarders/.test(r), r);
+    const j = JSON.parse(fs.readFileSync(INV, 'utf8')); const a = j.accounts.testacct1;
+    assert((fs.statSync(INV).mode & 0o777) === 0o600 && !('root' in j.accounts), 'mode/root');
+    assert(a.mailboxes.join() === 'info@test-c01.example.nz,sales@test-c01.example.nz,shop@test-c01-addon.example.nz' && a.forwarders[0].to === 'someone@gmail.example' && a.package === 'cloakecr_Standard' && a.disk_used === '512M' && j.accounts.testacct2.suspended === true, JSON.stringify(j));
+    assert(!/pass/i.test(fs.readFileSync(INV, 'utf8')), 'password field');
+  });
+  await test('C02', 'Service page shows the server\'s mailboxes and forwards (package, disk); cPanel check lists the count to update, accounts with no service, suspended; Update sets mailboxes only (prices unchanged); Undo restores; with 3 mailboxes the Xero line says "Includes 3 mailboxes"', async () => {
+    sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,price_ex_gst,cycle_months,next_period_start,cpanel_username,mailboxes,source_system,created_at) VALUES (${S.client.id},'hosting','test-c01.example.nz','active',1,0,201,6,'${todayNZ}','testacct1',1,'app',NOW())`);
+    const sid = num(`SELECT id FROM services WHERE domain='test-c01.example.nz'`);
+    await go(P, 'index.php?page=service&id=' + sid);
+    const t = await P.locator('[data-testid=cpanel-panel]').innerText();
+    assert(t.includes('sales@test-c01.example.nz') && t.includes('hello@test-c01.example.nz → someone@gmail.example') && t.includes('package cloakecr_Standard') && t.includes('512 MB of 2,000 MB'), 'panel ' + t);
+    assert(/3 mailboxes · 1 forward/.test(t) && await P.locator('[data-testid=cpanel-mismatch]').count() === 1, 'counts');
+    await go(P, 'cpanel-check.php');
+    assert(await P.locator(`[data-testid=cpanel-diff] [data-service="${sid}"]`).count() === 1 && /testacct2/.test(await P.locator('[data-testid=cpanel-orphans]').textContent()), 'check page');
+    const price = one(`SELECT price_ex_gst FROM services WHERE id=${sid}`);
+    for (const b of await P.locator('[data-testid=cpanel-diff] input[name="sids[]"]').all()) if ((await b.getAttribute('value')) !== String(sid)) await b.uncheck();
+    await save(P);
+    assert(one(`SELECT CONCAT(mailboxes,'|',price_ex_gst) FROM services WHERE id=${sid}`) === '3|' + price, 'updated');
+    await undoClick(P);
+    assert(one(`SELECT mailboxes FROM services WHERE id=${sid}`) === '1', 'undo');
+    sql(`UPDATE services SET mailboxes=3 WHERE id=${sid}`);
+    await go(P, 'index.php?page=invoicing'); assert(/test-c01\.example\.nz – .*\(6 months\)\. Includes 3 mailboxes/.test(await P.locator('main').innerText()), 'description');
+    await go(P, 'index.php?page=client&id=' + S.client.id); assert(/cPanel testacct1 · 3 mbx · 1 fwd/.test(await P.locator('[data-testid=client-services]').innerText()), 'client page summary');
+    await go(P, 'index.php?page=check'); assert(/cPanel inventory \(nightly, read-only\)\s*as at/.test(await P.locator('.checklist').innerText()), 'release check');
+    sql(`DELETE FROM services WHERE id=${sid}`); try { fs.unlinkSync(INV); } catch (e) { }
   });
   await test('R04', 'Record one Xero invoice for two ticked lines: charges with the number and who; each service moves on one cycle; Undo puts everything back', async () => {
     const s1 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S1'`)[0], s2 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S2'`)[0];

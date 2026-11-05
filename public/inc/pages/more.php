@@ -17,6 +17,7 @@ $groups = [
         [route('invoicing'), 'Pending Invoicing', 'Renewals, milestones, claims and tasks to invoice in Xero'],
         [route('services'), 'Services', 'Hosting, domains and email — what each client has and when it renews'],
         ['plans.php', 'Plans', 'Hosting, email and domain plans: today\'s prices, legacy prices, Xero items'],
+        ['cpanel-check.php', 'cPanel check', 'Mailboxes, forwards, package and disk from the server; counts to update'],
         [route('domains'), 'Domains', 'Every domain: expiry, registrar, DNS, auto-renew, and which hosting it is included in'],
         ['claims.php', 'Month-end claims', 'Hours and progress claims for monthly-billed tasks'],
         ['billing-settings.php', 'Billing settings', 'Lead time, Xero accounts, hourly rate, materials markup'],

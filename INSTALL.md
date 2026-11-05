@@ -1,3 +1,25 @@
+# Install v0.20.0 (build 20261105.3) — and how to undo it
+
+**What changes:** application files only. **No database change.** Plus a one-off root step for the nightly server check.
+
+## 1. Install (WHM Terminal)
+1. `su -s /bin/bash - cloakecrea`
+2. `cm-update v0.20.0` → `Database: schema up to date` → `y` → `Verified: … v0.20.0 · build 20261105.3`.
+3. `exit` (back to root for the next step).
+
+## 2. Email inventory — once, as root
+```
+bash /home/cloakecrea/cloake-manager/releases/cloake-workdesk-v0.20.0-build20261105.3/deploy/install-email-inventory.sh
+```
+It installs the check (root only) and a nightly job (02:17), runs it once and prints e.g. `Email inventory: 68 accounts, 120 mailboxes, 45 forwarders`. Then in Workdesk: **More… › cPanel check**, and any hosting service page shows **On the server**.
+
+To remove it later: the same command with `--remove`.
+
+## Undo
+`cm-update v0.19.0` (the server check can stay; v0.19 just ignores its file).
+
+---
+
 # Install v0.19.0 (build 20261105.2) — and how to undo it
 
 **What changes:** application files and **database migration 009** (add-only: a new `plans` table with your six plans, and `plan_id` + `mailboxes` on services). Includes v0.18.2 (short Xero descriptions). **No Xero reconnect needed.**

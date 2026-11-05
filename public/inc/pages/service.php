@@ -48,6 +48,16 @@ $xs = cm_expiry_state($s['expiry_date'] ?? null, $today);
   <?php if ($s['check_status'] === 'agrees'): ?><dt>Check</dt><dd><?=h((string)$s['check_note'] ?: 'Agrees with Xero')?></dd><?php endif; ?>
   <?php if ($s['notes']): ?><dt>Notes</dt><dd><?=h($s['notes'])?></dd><?php endif; ?>
 </dl>
+<?php // v0.20: what cPanel says is provisioned (nightly file written by the root job; read-only)
+if (in_array($s['kind'], ['hosting', 'email'], true) && ($inv = cm_cpanel_inventory())): $acct = cm_service_account($s, $inv); ?>
+<div class="panel" data-testid="cpanel-panel"><h2 class="panel-title">On the server <small class="muted">cPanel, as at <?=h($inv['at'])?></small></h2>
+<?php if (!$acct): ?><p class="muted small" data-testid="cpanel-none">No cPanel account found for this service<?=$s['cpanel_username'] ? ' (username ' . h($s['cpanel_username']) . ')' : ''?>. Put its cPanel username on the service (Edit › Domain &amp; server).</p>
+<?php else: [$cu, $ca] = $acct; $mbs = cm_account_mailboxes($s, $ca); $fws = cm_account_forwarders($s, $ca); $rec = (int)($s['mailboxes'] ?? 0); ?>
+<p class="small"><strong><?=h($cu)?></strong><?=!empty($ca['package']) ? ' · package ' . h($ca['package']) : ''?><?=cm_disk_text($ca) !== '' ? ' · disk ' . h(cm_disk_text($ca)) : ''?><?=!empty($ca['suspended']) ? ' · <span class="late">suspended</span>' : ''?></p>
+<p class="small" data-testid="cpanel-counts"><?=count($mbs)?> mailbox<?=count($mbs) === 1 ? '' : 'es'?> · <?=count($fws)?> forward<?=count($fws) === 1 ? '' : 's'?><?php if (cm_has_plans($pdo) && count($mbs) !== $rec): ?> · <span class="late" data-testid="cpanel-mismatch">recorded here: <?=$rec?> — <a href="cpanel-check.php">update</a></span><?php endif; ?></p>
+<?php if ($mbs || $fws): ?><ul class="plan-list compact"><?php foreach ($mbs as $m): ?><li><span class="pl-main"><?=h($m)?> <small class="muted">mailbox</small></span></li><?php endforeach; foreach ($fws as $f): ?><li><span class="pl-main"><?=h($f['from'])?> → <?=h($f['to'])?> <small class="muted">forward (free)</small></span></li><?php endforeach; ?></ul><?php endif; ?>
+<?php endif; ?></div>
+<?php endif; ?>
 <?php if ($dom && $incList): ?><div class="panel" data-testid="included-domains"><h2 class="panel-title">Domains included <small class="muted">listed after “Includes” on the Xero description</small></h2><ul class="plan-list"><?php foreach ($incList as $d): ?><li><span class="pl-main"><a href="<?=h(route('service', ['id' => $d['id']]))?>"><strong><?=h($d['name'])?></strong></a><small><?=h(implode(' · ', array_filter([$d['expiry_date'] ? 'expires ' . niceDate($d['expiry_date']) : '', $d['status'] !== 'active' ? (CM_SERVICE_STATUSES[$d['status']] ?? $d['status']) : ''])))?></small></span></li><?php endforeach; ?></ul></div><?php endif; ?>
 <?php if ($dom && $s['kind'] === 'domain' && !$s['is_internal']): $hosts = cm_hosting_choices($pdo, $s['client_id'] ? (int)$s['client_id'] : null, $id); if ($hosts || $incIn): ?>
 <details class="inline-add" data-testid="include-form"<?=!$incIn && !$billed ? ' open' : ''?>><summary><?=$incIn ? 'Change or remove “included in”' : 'Include in a hosting service'?></summary><form method="post" action="service-edit.php" class="form"><input type="hidden" name="id" value="<?=(int)$id?>"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="action" value="include">
