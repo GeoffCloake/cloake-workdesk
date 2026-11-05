@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', 'plans.php', 'plans.php?match=1', 'plans.php?edit=new', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -1230,6 +1230,55 @@ function protectedChecksums() {
     const r = execFileSync('php', [path.join(__dirname, 'unit-descriptions.php')], { encoding: 'utf8' }).trim();
     assert(r === 'OK', r);
   });
+  /* ---------- v0.19: plans ---------- */
+  const planId = code => num(`SELECT id FROM plans WHERE code='${code}'`);
+  await test('PL01', 'Migration 009: six plans (Essential $135, Standard $299.70, Advanced $390 per 6 months, mailbox $2.95/month, DNS per client, domain $49.95/year); Plans is on More; release check passes', async () => {
+    assert(sql(`SELECT CONCAT(code,'|',COALESCE(price_ex_gst,''),'|',price_months) FROM plans ORDER BY sort_order`).map(r => r[0]).join(',') === 'HOST-ESS|135.00|6,HOST-STD|299.70|6,HOST-ADV|390.00|6,MAILBOX|2.95|1,DNS-FWD||6,DOMAIN|49.95|12', 'seeded plans');
+    assert(num(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='services' AND COLUMN_NAME IN ('plan_id','mailboxes')`) === 2, 'service columns');
+    await go(P, 'index.php?page=more'); assert(await P.locator('.more-list a[href="plans.php"]').count() === 1, 'not on More');
+    await go(P, 'plans.php'); const t = await P.locator('[data-testid=plans-list]').innerText();
+    assert(t.includes('HOST-STD') && t.includes('$299.70 per 6 months') && t.includes('$2.95 per month') && t.includes('price per client'), 'list ' + t.slice(0, 200));
+    await go(P, 'index.php?page=check'); assert(/Migration 009/.test(await P.locator('.checklist').innerText()) && !(await P.$$eval('.checklist li.bad', l => l.length)), 'release check');
+  });
+  await test('PL02', 'Match services to plans: price points to the plan (Essential + 1 mailbox, Standard at the older $201, monthly $33.50, domain, email ×1 mailbox); $390 is left to choose (never Advanced automatically); Link sets plan + mailboxes only (prices unchanged); one Undo puts all back', async () => {
+    const cl = +one(`SELECT id FROM clients ORDER BY id LIMIT 1`);
+    const mk = (d, kind, price, cyc) => { sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,price_ex_gst,cycle_months,next_period_start,source_system,created_at) VALUES (${cl},'${kind}','${d}','active',1,0,${price},${cyc},'2030-01-01','app',NOW())`); return num(`SELECT id FROM services WHERE domain='${d}'`); };
+    const ids = { ess: mk('test-pl-ess.example.nz', 'hosting', 152.70, 6), leg: mk('test-pl-leg.example.nz', 'hosting', 201, 6), mon: mk('test-pl-mon.example.nz', 'hosting', 33.50, 1), adv: mk('test-pl-adv.example.nz', 'hosting', 390, 6), dom: mk('test-pl-dom.example.nz', 'domain', 49.95, 12), em: mk('test-pl-em.example.nz', 'email', 35.40, 12) };
+    await go(P, 'plans.php?match=1');
+    const row = id => P.locator(`[data-service="${id}"]`);
+    for (const k of ['ess', 'leg', 'mon', 'dom', 'em']) assert(await row(ids[k]).locator('input[name="sids[]"]').isChecked(), k + ' not ticked');
+    assert(!(await row(ids.adv).locator('input[name="sids[]"]').isChecked()) && (await row(ids.adv).locator('select').inputValue()) === '', 'Advanced proposed');
+    assert(/older price \$201\.00/.test(await row(ids.leg).innerText()) && (await row(ids.ess).locator('input[name^=mb]').inputValue()) === '1' && (await row(ids.em).locator('input[name^=mb]').inputValue()) === '1', 'reasons / mailboxes');
+    const priceBefore = one(`SELECT GROUP_CONCAT(price_ex_gst ORDER BY id) FROM services`);
+    await save(P);
+    const got = k => sql(`SELECT p.code, COALESCE(s.mailboxes,'') FROM services s JOIN plans p ON p.id=s.plan_id WHERE s.id=${ids[k]}`)[0] || [];
+    assert(got('ess').join() === 'HOST-ESS,1' && got('leg').join() === 'HOST-STD,0' && got('mon').join() === 'HOST-STD,0' && got('dom')[0] === 'DOMAIN' && got('em').join() === 'MAILBOX,1', 'linked ' + JSON.stringify([got('ess'), got('leg'), got('mon'), got('dom'), got('em')]));
+    assert(one(`SELECT plan_id FROM services WHERE id=${ids.adv}`) === null && one(`SELECT GROUP_CONCAT(price_ex_gst ORDER BY id) FROM services`) === priceBefore, 'adv linked / prices changed');
+    await undoClick(P);
+    assert(num(`SELECT COUNT(*) FROM services WHERE id IN (${Object.values(ids).join(',')}) AND (plan_id IS NOT NULL OR mailboxes IS NOT NULL)`) === 0, 'undo');
+    sql(`DELETE FROM services WHERE id IN (${Object.values(ids).join(',')})`);
+  });
+  await test('PL03', 'Service on a plan: a new service with the plan and no price starts at the list price (Standard 6 months + 2 mailboxes = $335.10); its Xero line says "Includes 2 mailboxes"; a service on Standard at $201 shows "legacy price"', async () => {
+    await go(P, 'service-edit.php?client_id=' + S.client.id);
+    await P.fill('#domain', 'test-pl03.example.nz'); await P.selectOption('#plan_id', String(planId('HOST-STD'))); await P.fill('#mailboxes', '2');
+    await P.selectOption('#cycle_months', '6'); await P.fill('#next_period_start', todayNZ); await save(P);
+    const s = sql(`SELECT id, price_ex_gst, mailboxes FROM services WHERE domain='test-pl03.example.nz'`)[0];
+    assert(s && +s[1] === 335.10 && s[2] === '2', 'service ' + JSON.stringify(s) + ' ' + (await P.locator('main').innerText()).slice(0, 200));
+    assert(/HOST-STD/.test(await P.locator('[data-testid=service-plan]').innerText()) && await P.locator('[data-testid=legacy-price]').count() === 0, 'plan shown / legacy');
+    await go(P, 'index.php?page=invoicing'); assert(/Website hosting – test-pl03\.example\.nz – .*\(6 months\)\. Includes 2 mailboxes/.test(await P.locator('main').innerText()), 'description');
+    sql(`UPDATE services SET price_ex_gst=201, mailboxes=NULL WHERE id=${s[0]}`);
+    await go(P, 'index.php?page=service&id=' + s[0]); assert(/list price now \$299\.70/.test(await P.locator('[data-testid=service-plan]').innerText()) && await P.locator('[data-testid=legacy-price]').count() === 1, 'legacy flag');
+    sql(`DELETE FROM services WHERE id=${s[0]}`);
+  });
+  await test('PL04', 'Plan form: price change saved and audited, Undo restores it; a code with spaces or a duplicate code is refused', async () => {
+    const id = planId('HOST-ESS');
+    await go(P, 'plans.php?edit=' + id); await P.fill('#price_ex_gst', '140'); await save(P);
+    assert(+one(`SELECT price_ex_gst FROM plans WHERE id=${id}`) === 140 && num(`SELECT COUNT(*) FROM activity_events WHERE event_kind='service_plan_updated'`) >= 1, 'saved/audited');
+    await undoClick(P); assert(+one(`SELECT price_ex_gst FROM plans WHERE id=${id}`) === 135, 'undo');
+    await go(P, 'plans.php?edit=new'); await P.fill('#code', 'BAD CODE'); await P.fill('#name', 'x'); await save(P); assert(/letters, numbers and dashes/.test(await P.locator('.alert').innerText()), 'bad code');
+    await P.fill('#code', 'HOST-STD'); await save(P); assert(/already has the code/.test(await P.locator('.alert').innerText()), 'duplicate');
+    assert(num(`SELECT COUNT(*) FROM plans`) === 6, 'plan added');
+  });
   await test('R04', 'Record one Xero invoice for two ticked lines: charges with the number and who; each service moves on one cycle; Undo puts everything back', async () => {
     const s1 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S1'`)[0], s2 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S2'`)[0];
     await go(P, 'index.php?page=invoicing');
@@ -1722,6 +1771,32 @@ function protectedChecksums() {
       await P.locator('[data-testid=sync-xero-ignored] summary').click();
       await Promise.all([P.waitForNavigation(), P.locator('[data-testid=sync-xero-ignored] li', { hasText: 'Test Old One-off Customer' }).locator('button[data-act=unignore]').click()]);
       assert(await P.locator('[data-testid=sync-xero-only] li', { hasText: 'Test Old One-off Customer' }).count() === 1, 'not shown again');
+    });
+    await test('PX01', 'Plans ↔ Xero items: a plan Xero has at another price is "different" (Update Xero sends its ItemID and price); the others are created as items (code, name, price, account, tax); a non-plan Xero item is listed apart; then all ✓', async () => {
+      await go(P, 'plans.php');
+      const st = c => P.locator(`[data-plan="${c}"]`).getAttribute('data-xero');
+      assert(await st('DOMAIN') === 'diff' && await st('HOST-STD') === 'missing' && /WEB-DEV/.test(await P.locator('[data-testid=xero-other-items]').textContent()), 'flags ' + (await st('DOMAIN')) + '/' + (await st('HOST-STD')) + ' ' + (await P.locator('main').innerText()).slice(0, 600));
+      await Promise.all([P.waitForNavigation(), P.click('button[value="xero_create"]')]);
+      const posts = mlog().filter(r => r.p === '/api/Items' && r.m === 'POST').map(r => JSON.parse(r.b).Items[0]);
+      const std = posts.find(i => i.Code === 'HOST-STD');
+      assert(posts.length === 5 && std && std.Name === 'Website hosting - Standard' && std.SalesDetails.UnitPrice === 299.7 && std.SalesDetails.AccountCode === '43504' && std.SalesDetails.TaxType === 'OUTPUT2' && !posts.some(i => i.ItemID), 'created ' + JSON.stringify(posts));
+      assert(!('UnitPrice' in posts.find(i => i.Code === 'DNS-FWD').SalesDetails), 'DNS sent a price');
+      await Promise.all([P.waitForNavigation(), P.click('[data-plan="DOMAIN"] button[name=push]')]);
+      const up = mlog().filter(r => r.p === '/api/Items' && r.m === 'POST').map(r => JSON.parse(r.b).Items[0]).pop();
+      assert(up.ItemID === 'cccccccc-0000-4000-8000-000000000002' && up.SalesDetails.UnitPrice === 49.95 && up.SalesDetails.AccountCode === '43601', 'update ' + JSON.stringify(up));
+      await go(P, 'plans.php');
+      for (const c of ['HOST-ESS', 'HOST-STD', 'HOST-ADV', 'MAILBOX', 'DNS-FWD', 'DOMAIN']) assert(await st(c) === 'ok', c + ' not in sync');
+      assert(num(`SELECT COUNT(*) FROM plans WHERE xero_item_id IS NOT NULL`) === 6, 'item ids stored');
+    });
+    await test('PX02', 'A draft for a service on a plan carries the plan\'s item code (Xero reports sales by plan); a service without a plan sends no item code', async () => {
+      const a = svc('test-px02.example.nz', xc, 402); sql(`UPDATE services SET plan_id=${planId('HOST-STD')} WHERE id=${a}`);
+      await draftFor('test-px02.example.nz');
+      const inv = JSON.parse(mlog().filter(r => r.p === '/api/Invoices').pop().b).Invoices[0];
+      assert(inv.LineItems[0].ItemCode === 'HOST-STD' && inv.LineItems[0].UnitAmount === 402 && /^Website hosting – test-px02/.test(inv.LineItems[0].Description), 'line ' + JSON.stringify(inv.LineItems[0]));
+      const b = svc('test-px02b.example.nz', xc, 50);
+      await draftFor('test-px02b.example.nz');
+      const inv2 = JSON.parse(mlog().filter(r => r.p === '/api/Invoices').pop().b).Invoices[0];
+      assert(!('ItemCode' in inv2.LineItems[0]), 'item code without a plan');
     });
     await test('XS05', 'A connection made before v0.18 (without the contacts/settings permissions) is asked to reconnect; creating contacts is refused until then', async () => {
       const j = JSON.parse(fs.readFileSync(XJ, 'utf8')); const keep = j.scope; j.scope = 'offline_access accounting.invoices accounting.contacts.read'; fs.writeFileSync(XJ, JSON.stringify(j));

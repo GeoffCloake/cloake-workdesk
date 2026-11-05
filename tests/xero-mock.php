@@ -74,11 +74,30 @@ switch ($path) {
     case '/api/TaxRates':
         if (!$bearerOk()) $json(401, ['Title' => 'Unauthorized']);
         $json(200, ['TaxRates' => [['TaxType' => 'OUTPUT2', 'Name' => '15% GST on Income', 'Status' => 'ACTIVE', 'EffectiveRate' => 15], ['TaxType' => 'ZERORATEDOUTPUT', 'Name' => 'Zero Rated', 'Status' => 'ACTIVE', 'EffectiveRate' => 0], ['TaxType' => 'NONE', 'Name' => 'No GST', 'Status' => 'ACTIVE', 'EffectiveRate' => 0]]]);
+    case '/api/Items':
+        // v0.19: Products and services. Seeded with one non-plan item and the DOMAIN plan at an old price (→ "different").
+        if (!$bearerOk()) $json(401, ['Title' => 'Unauthorized']);
+        $S['items'] ??= [
+            ['ItemID' => 'cccccccc-0000-4000-8000-000000000001', 'Code' => 'WEB-DEV', 'Name' => 'Web development (hourly)', 'IsSold' => true, 'SalesDetails' => ['UnitPrice' => 85.0, 'AccountCode' => '200']],
+            ['ItemID' => 'cccccccc-0000-4000-8000-000000000002', 'Code' => 'DOMAIN', 'Name' => 'Domain renewal', 'IsSold' => true, 'SalesDetails' => ['UnitPrice' => 45.0, 'AccountCode' => '43601']],
+        ];
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') { $save(); $json(200, ['Items' => $S['items']]); }
+        $in = json_decode($body, true)['Items'][0] ?? [];
+        if (!empty($in['ItemID'])) {
+            foreach ($S['items'] as &$it) if ($it['ItemID'] === $in['ItemID']) { $it = array_merge($it, $in); $out = $it; }
+            unset($it); $save(); if (empty($out)) $json(404, ['Message' => 'not found']); $json(200, ['Items' => [$out]]);
+        }
+        foreach ($S['items'] as $it) if (strcasecmp($it['Code'], (string)($in['Code'] ?? '')) === 0) $json(400, ['Elements' => [['ValidationErrors' => [['Message' => 'Item code \'' . $in['Code'] . '\' already exists']]]]]);
+        if (mb_strlen((string)($in['Name'] ?? '')) > 50) $json(400, ['Elements' => [['ValidationErrors' => [['Message' => 'Name must be 50 characters or less']]]]]);
+        $new = ['ItemID' => sprintf('dddddddd-0000-4000-8000-%012d', count($S['items']) + 1)] + $in;
+        $S['items'][] = $new; $save();
+        $json(200, ['Items' => [$new]]);
     case '/api/Invoices':
         if (!$bearerOk()) $json(401, ['Title' => 'Unauthorized']);
         $in = json_decode($body, true)['Invoices'][0] ?? [];
         if (($in['Status'] ?? '') !== 'DRAFT' || ($in['Type'] ?? '') !== 'ACCREC') $json(400, ['Message' => 'mock only accepts DRAFT ACCREC']);
         if (($in['Contact']['Name'] ?? '') === 'Test Xero Fail') $json(400, ['Elements' => [['ValidationErrors' => [['Message' => 'Account code \'99999\' is not a valid code']]]]]);
+        foreach ($in['LineItems'] ?? [] as $l) if (isset($l['ItemCode']) && !in_array($l['ItemCode'], array_column($S['items'] ?? [], 'Code'), true)) $json(400, ['Elements' => [['ValidationErrors' => [['Message' => 'Item code \'' . $l['ItemCode'] . '\' is not valid']]]]]);
         $S['n'] = ($S['n'] ?? 9000) + 1; $save();
         $id = sprintf('%08x-0000-4000-8000-%012x', random_int(0, 0xffffffff), random_int(0, 0xffffffffffff));
         // like Xero on a draft: an account code the organisation doesn't have is dropped silently

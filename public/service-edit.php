@@ -16,7 +16,9 @@ $pdo = cm_pdo();
 $id = m7id();
 $FIELDS = ['client_id', 'kind', 'domain', 'label', 'plan_name', 'status', 'cycle_months', 'price_ex_gst', 'xero_account', 'billable', 'is_internal', 'expiry_date', 'registrar', 'cpanel_username', 'check_status', 'check_note', 'notes'];
 $DOM = cm_has_domains($pdo) ? ['nameservers', 'dns_host', 'auto_renew', 'included_in_service_id', 'provider_ref'] : [];
-$FIELDS = array_merge($FIELDS, $DOM);
+$PLN = cm_has_plans($pdo) ? ['plan_id', 'mailboxes'] : [];   // v0.19
+$FIELDS = array_merge($FIELDS, $DOM, $PLN);
+$plans = cm_plans($pdo);
 $pre = filter_var($_GET['client_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 $s = $id ? oneRow($pdo, 'SELECT * FROM services WHERE id=?', [$id]) : array_merge(array_fill_keys($FIELDS, null), ['client_id' => $pre, 'kind' => 'hosting', 'status' => 'active', 'billable' => 1, 'is_internal' => 0, 'cycle_months' => 6, 'next_period_start' => null]);
 if ($id && !$s) { http_response_code(404); exit('Service not found.'); }
@@ -64,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . route('task', ['id' => $taskId, 'saved' => 1]), true, 303); exit;
         }
         $raw = [];
-        foreach (['client_id' => 20, 'kind' => 20, 'domain' => 255, 'label' => 255, 'plan_name' => 120, 'status' => 20, 'cycle_months' => 3, 'price_ex_gst' => 14, 'xero_account' => 20, 'expiry_date' => 10, 'registrar' => 60, 'cpanel_username' => 60, 'check_status' => 20, 'check_note' => 500, 'notes' => 5000, 'next_period_start' => 10, 'nameservers' => 255, 'dns_host' => 60, 'auto_renew' => 2, 'included_in_service_id' => 20, 'provider_ref' => 100] as $f => $max) $raw[$f] = cm_post($f, $max);
+        foreach (['client_id' => 20, 'kind' => 20, 'domain' => 255, 'label' => 255, 'plan_name' => 120, 'status' => 20, 'cycle_months' => 3, 'price_ex_gst' => 14, 'xero_account' => 20, 'expiry_date' => 10, 'registrar' => 60, 'cpanel_username' => 60, 'check_status' => 20, 'check_note' => 500, 'notes' => 5000, 'next_period_start' => 10, 'nameservers' => 255, 'dns_host' => 60, 'auto_renew' => 2, 'included_in_service_id' => 20, 'provider_ref' => 100, 'plan_id' => 20, 'mailboxes' => 4] as $f => $max) $raw[$f] = cm_post($f, $max);
         if ($id) cm_check_ver($old, $FIELDS);
         $new = ['client_id' => cm_valid_client($pdo, $raw['client_id'], true), 'kind' => $raw['kind'], 'domain' => cm_nullable(strtolower($raw['domain'])), 'label' => cm_nullable($raw['label']), 'plan_name' => cm_nullable($raw['plan_name']),
             'status' => $raw['status'], 'cycle_months' => $raw['cycle_months'] === '' ? null : (int)$raw['cycle_months'], 'price_ex_gst' => cm_nullable(str_replace([',', '$'], '', $raw['price_ex_gst'])),
@@ -75,6 +77,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $new += ['nameservers' => cm_nullable(strtolower($raw['nameservers'])), 'dns_host' => cm_nullable($raw['dns_host']), 'auto_renew' => $raw['auto_renew'] === '' ? null : (int)$raw['auto_renew'],
                 'included_in_service_id' => $new['kind'] === 'domain' ? cm_valid_included($pdo, $raw['included_in_service_id'], $new['client_id'] !== null ? (int)$new['client_id'] : null, (int)$id) : null, 'provider_ref' => cm_nullable($raw['provider_ref'])];
             if ($new['included_in_service_id']) $new['billable'] = 0;   // included in hosting: never billed on its own
+        }
+        if ($PLN) {
+            if ($raw['plan_id'] !== '' && (!ctype_digit($raw['plan_id']) || !isset($plans[(int)$raw['plan_id']]))) throw new InvalidArgumentException('Choose a plan from the list.');
+            if ($raw['mailboxes'] !== '' && (!ctype_digit($raw['mailboxes']) || (int)$raw['mailboxes'] > 500)) throw new InvalidArgumentException('Mailboxes must be a whole number.');
+            $new += ['plan_id' => $raw['plan_id'] === '' ? null : (int)$raw['plan_id'], 'mailboxes' => $raw['mailboxes'] === '' ? null : (int)$raw['mailboxes']];
+            // a new billed service with a plan and no price starts at today's list price for its cycle
+            if (!$id && $new['price_ex_gst'] === null && $new['plan_id'] && $new['cycle_months']) { $lp = cm_service_list_price($new, $plans); if ($lp !== null) $new['price_ex_gst'] = number_format($lp, 2, '.', ''); }
         }
         if (!isset(CM_SERVICE_KINDS[$new['kind']])) throw new InvalidArgumentException('Choose a kind.');
         if (!isset(CM_SERVICE_STATUSES[$new['status']])) throw new InvalidArgumentException('Choose a status.');
@@ -119,7 +128,10 @@ cm_page_start($id ? 'Edit service' : 'New service', 'services', ['back' => [$bac
 <div class="field"><label for="client">Client</label><?php cm_client_picker(cm_client_options($pdo), (string)($s['client_id'] ?? ''), true); ?></div>
 <div class="pair"><div class="field"><label for="kind">Kind</label><?php $sel('kind', CM_SERVICE_KINDS, $s['kind']); ?></div><div class="field"><label for="status">Status</label><?php $sel('status', CM_SERVICE_STATUSES, $s['status']); ?></div></div>
 <div class="pair"><div class="field"><label for="domain">Domain</label><input id="domain" name="domain" maxlength="255" value="<?=h($s['domain'] ?? '')?>" placeholder="example.co.nz"></div><div class="field"><label for="label">Label <span class="opt">(if no domain)</span></label><input id="label" name="label" maxlength="255" value="<?=h($s['label'] ?? '')?>"></div></div>
-<div class="field"><label for="plan_name">Plan <span class="opt">(for your records; not on invoices)</span></label><input id="plan_name" name="plan_name" maxlength="120" value="<?=h($s['plan_name'] ?? '')?>" placeholder="e.g. Standard - CMS with PHP 7"></div>
+<?php if ($PLN): ?><div class="pair"><div class="field"><label for="plan_id">Plan</label><select id="plan_id" name="plan_id"><option value="">— no plan —</option><?php foreach ($plans as $p): if (!$p['active'] && (string)$p['id'] !== (string)($s['plan_id'] ?? '')) continue; ?><option value="<?=(int)$p['id']?>"<?=(string)($s['plan_id'] ?? '') === (string)$p['id'] ? ' selected' : ''?>><?=h($p['code'] . ' · ' . $p['name'] . ($p['price_ex_gst'] !== null ? ' · ' . cm_money($p['price_ex_gst']) . ' ' . (CM_PLAN_PERIODS[(string)$p['price_months']] ?? '') : ''))?></option><?php endforeach; ?></select></div>
+<div class="field"><label for="mailboxes">Mailboxes <span class="opt">(provisioned)</span></label><input id="mailboxes" name="mailboxes" inputmode="numeric" maxlength="4" value="<?=h((string)($s['mailboxes'] ?? ''))?>"></div></div>
+<?php if (!$id): ?><p class="helper">Leave the price blank to use the plan's list price for the cycle (plus mailboxes).</p><?php endif; ?><?php endif; ?>
+<div class="field"><label for="plan_name"><?=$PLN ? 'Old plan name' : 'Plan'?> <span class="opt">(for your records; not on invoices)</span></label><input id="plan_name" name="plan_name" maxlength="120" value="<?=h($s['plan_name'] ?? '')?>" placeholder="e.g. Standard - CMS with PHP 7"></div>
 <fieldset class="field group"><legend>Billing</legend>
 <div class="checks"><label class="check"><input type="checkbox" name="billable" value="1"<?=!empty($s['billable']) ? ' checked' : ''?>> Billed</label><label class="check"><input type="checkbox" name="is_internal" value="1"<?=!empty($s['is_internal']) ? ' checked' : ''?>> Internal (Cloake's own)</label></div>
 <div class="triple"><div><label for="price_ex_gst">Price ex GST</label><input id="price_ex_gst" name="price_ex_gst" inputmode="decimal" maxlength="14" value="<?=h($s['price_ex_gst'] ?? '')?>"></div><div><label for="cycle_months">Cycle</label><?php $sel('cycle_months', CM_CYCLES, $s['cycle_months'] ?? ''); ?></div><div><label for="xero_account">Xero account</label><input id="xero_account" name="xero_account" maxlength="20" value="<?=h($s['xero_account'] ?? '')?>" placeholder="<?=h(cm_account_for($pdo, (string)$s['kind']))?>"></div></div>

@@ -25,9 +25,11 @@ const CM_UNDOABLE = ['client_updated' => 'clients', 'contact_updated' => 'contac
     // v0.12: rows identified by payload row_id; '*' = several rows, payload {_rows:[{table,id,changes}]}
     'price_line_updated' => 'breakdown_items', 'milestone_updated' => 'billing_milestones', 'template_updated' => 'task_templates', 'plan_updated' => 'enquiry_task_plans', 'proforma_retired' => '*', 'item_updated' => 'job_items', 'staff_updated' => 'staff',
     // v0.13
-    'service_updated' => 'services', 'invoice_recorded' => 'invoice'];
+    'service_updated' => 'services', 'invoice_recorded' => 'invoice',
+    // v0.19: a plan's details (payload row_id); several services linked to plans at once ('*')
+    'service_plan_updated' => 'plans', 'services_plans_matched' => '*'];
 /** Tables a multi-row undo ('*') may touch. */
-const CM_UNDO_MULTI_TABLES = ['tasks', 'clients'];
+const CM_UNDO_MULTI_TABLES = ['tasks', 'clients', 'services'];
 /** How long after saving the Undo link stays usable (seconds). */
 const CM_UNDO_WINDOW = 1800;
 

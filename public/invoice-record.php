@@ -95,7 +95,13 @@ try {
     $xid = null;
     if ($draft) {
         $all = array_merge($created, $claims);
-        $lines = allRows($pdo, 'SELECT description, amount_ex_gst amount, xero_account account, period_start FROM charges WHERE id IN (' . implode(',', array_map('intval', $all)) . ') ORDER BY id');
+        $ids = implode(',', array_map('intval', $all));
+        // v0.19: a service on a plan that is a Xero item carries the item code (Xero then reports sales by plan)
+        $lines = cm_has_plans($pdo)
+            ? allRows($pdo, "SELECT g.description, g.amount_ex_gst amount, g.xero_account account, g.period_start, p.code item_code FROM charges g
+                LEFT JOIN services s ON g.source_kind='service' AND s.id=g.source_id LEFT JOIN plans p ON p.id=s.plan_id AND p.xero_item_id IS NOT NULL AND p.active=1
+                WHERE g.id IN ($ids) ORDER BY g.id")
+            : allRows($pdo, "SELECT description, amount_ex_gst amount, xero_account account, period_start FROM charges WHERE id IN ($ids) ORDER BY id");
         $due = max(date('Y-m-d'), (string)min(array_column($lines, 'period_start')));
         $crow = oneRow($pdo, 'SELECT * FROM clients WHERE id=?', [$client]) ?: ['name' => $cname];
         $ref = cm_post('reference', 255); if ($ref === '') $ref = cm_charges_reference($pdo, $all);

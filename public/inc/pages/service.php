@@ -33,7 +33,10 @@ $xs = cm_expiry_state($s['expiry_date'] ?? null, $today);
 <?php if ($s['check_status'] && $s['check_status'] !== 'agrees'): ?><p class="notice"><strong><?=h(CM_CHECK_STATUSES[$s['check_status']] ?? $s['check_status'])?>.</strong> <?=h((string)$s['check_note'])?></p><?php endif; ?>
 <dl class="facts task-facts">
   <dt>Billing</dt><dd><?=h(CM_CYCLES[(string)$s['cycle_months']] ?? '—')?><?=$s['xero_account'] ? ' · Xero account ' . h($s['xero_account']) : ''?></dd>
-  <?php if ($s['plan_name']): ?><dt>Plan</dt><dd><?=h($s['plan_name'])?></dd><?php endif; ?>
+  <?php $plans = cm_plans($pdo); $pl = $plans[(int)($s['plan_id'] ?? 0)] ?? null;
+  if ($pl): $ps = cm_price_status($s, $plans); $lp = cm_service_list_price($s, $plans); ?><dt>Plan</dt><dd data-testid="service-plan"><a href="plans.php"><?=h($pl['code'])?></a> <?=h($pl['name'])?><?=(int)($s['mailboxes'] ?? 0) > 0 ? ' · ' . (int)$s['mailboxes'] . ' mailbox' . ((int)$s['mailboxes'] === 1 ? '' : 'es') : ''?><?php if ($ps === 'legacy'): ?> · <span class="tag" data-testid="legacy-price">legacy price</span> <small class="muted">list price now <?=h(cm_money($lp))?></small><?php elseif ($ps === 'above'): ?> · <small class="muted">above the list price <?=h(cm_money($lp))?></small><?php endif; ?></dd>
+  <?php elseif (cm_has_plans($pdo) && !$s['is_internal']): ?><dt>Plan</dt><dd class="muted">none — <a href="plans.php?match=1">match services to plans</a></dd><?php endif; ?>
+  <?php if ($s['plan_name']): ?><dt><?=cm_has_plans($pdo) ? 'Old plan name' : 'Plan'?></dt><dd><?=h($s['plan_name'])?></dd><?php endif; ?>
   <?php if ($s['expiry_date']): ?><dt>Domain expiry</dt><dd class="<?=$xs === 'expired' ? 'late' : ($xs === 'soon' ? 'soon' : '')?>" data-testid="expiry"><?=h(niceDate($s['expiry_date']))?><?=$xs === 'expired' ? ' — expired' : ($xs === 'soon' ? ' — within ' . CM_EXPIRY_WARN_DAYS . ' days' : '')?><?=$s['registrar'] ? ' · ' . h($s['registrar']) : ''?></dd><?php elseif ($s['registrar']): ?><dt>Registrar</dt><dd><?=h($s['registrar'])?></dd><?php endif; ?>
   <?php if ($dom): ?>
   <?php if ($s['auto_renew'] !== null): ?><dt>Auto-renew</dt><dd><?=$s['auto_renew'] ? 'Yes' : 'No'?></dd><?php endif; ?>

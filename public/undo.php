@@ -66,9 +66,9 @@ try {
         $summary = str_starts_with((string)$ev['summary'], 'Undo: ') ? substr((string)$ev['summary'], 6) : 'Undo: ' . $ev['summary'];
         cm_audit($pdo, $ev['event_kind'], ['client_id' => $ev['client_id']], $summary, ['_rows' => $reverseRows]);
         $pdo->commit();
-        header('Location: ' . route('templates'), true, 303); exit;
+        header('Location: ' . ($ev['event_kind'] === 'services_plans_matched' ? 'plans.php?match=1' : route('templates')), true, 303); exit;
     }
-    $byRowId = in_array($table, ['breakdown_items', 'billing_milestones', 'task_templates', 'enquiry_task_plans', 'services', 'job_items', 'staff'], true);
+    $byRowId = in_array($table, ['breakdown_items', 'billing_milestones', 'task_templates', 'enquiry_task_plans', 'services', 'job_items', 'staff', 'plans'], true);
     $rowId = (int)($byRowId ? ($payload['row_id'] ?? 0) : match ($table) {
         'clients' => $ev['client_id'], 'tasks' => $ev['task_id'], 'work_log' => $ev['work_log_id'],
         'enquiries' => $ev['enquiry_id'], 'contacts' => $payload['contact_id'] ?? 0,
@@ -108,6 +108,7 @@ try {
         'enquiry_task_plans' => 'convert-enquiry.php?id=' . (int)$row['enquiry_id'] . '#plans',
         'job_items' => route('task', ['id' => (int)$row['task_id']]) . '#materials',
         'staff' => 'staff.php',
+        'plans' => 'plans.php',
     };
 } catch (Throwable $e) {
     $msg = cm_edit_error($e, $pdo, 'undo event #' . $eventId);

@@ -3,6 +3,18 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.19.0 · build 20261105.2 — 5 November 2026
+**Status: built and tested locally (Xero calls against the local stand-in).** 139/139 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **Database migration 009** (add-only: one new table, two new columns; rollback tested). Includes v0.18.2. **No Xero reconnect needed** — Xero items come under the invoices permission Workdesk already has.
+
+### Added — Plans (More… › Billing › Plans) (your request)
+- **The plan list** with today's price for a new client (ex GST): HOST-ESS Website hosting – Essential $135 / 6 months · HOST-STD Standard $299.70 / 6 months · HOST-ADV Advanced $390 / 6 months · MAILBOX $2.95 / month · DNS-FWD price per client · DOMAIN $49.95 / year. Add, edit, deactivate; edits are audited and undoable.
+- **Old clients keep their price.** A service records its plan and its own price; when the price is below today's list price the service page says **legacy price** (with the list price now). Nothing ever changes a price for you.
+- **Match services to plans:** lists live services without a plan with the plan their price points to — e.g. $152.70 / 6 months = Essential + 1 mailbox; $201 = Standard at the older price; email-only = mailboxes × $2.95. Clear matches are ticked; anything else (and Advanced) is yours to choose. **Link ticked services** records plan + mailboxes only; one Undo puts them all back.
+- **Service form:** Plan and Mailboxes (provisioned). A new service with a plan and no price starts at the list price for its cycle (plus mailboxes). The old WHMCS plan name stays for reference.
+- **Xero items:** each plan can be created in Xero's Products and services (code = plan code, name, price, account, 15% GST); Plans shows ✓ In Xero · ≠ differs → **Update Xero** · ✗ Not in Xero → tick, **Create ticked in Xero**; other Xero items are listed apart. Workdesk never deletes anything in Xero.
+- **Drafts:** a line for a service whose plan is a Xero item carries the item code, so Xero can report sales by plan. Amount and description are still Workdesk's.
+- **Xero descriptions** now show mailboxes when a service has them ("… Includes example.nz and 3 mailboxes").
+
 ## v0.18.2 · build 20261105.1 — 5 November 2026
 **Status: built and tested locally.** 133/133 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **No database change.** `cm-update v0.18.1` goes back.
 

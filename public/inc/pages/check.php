@@ -41,6 +41,9 @@ $missing007 = array_values(array_filter($mig007, fn($c) => !isset($cols[$c])));
 $add('Migration 007 — domain register and provisioning', !$missing007 && in_array('007_domains_provisioning', $ledger ?? [], true), $missing007 ? 'missing: ' . implode(', ', $missing007) : (in_array('007_domains_provisioning', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
 $missing008 = isset($cols['charges.xero_invoice_id']) ? [] : ['charges.xero_invoice_id'];
 $add('Migration 008 — Xero draft invoices', !$missing008 && in_array('008_xero_drafts', $ledger ?? [], true), $missing008 ? 'missing: charges.xero_invoice_id' : (in_array('008_xero_drafts', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
+$mig009 = ['plans.id', 'plans.code', 'plans.xero_item_id', 'services.plan_id', 'services.mailboxes'];
+$missing009 = array_values(array_filter($mig009, fn($c) => !isset($cols[$c])));
+$add('Migration 009 — service plans', !$missing009 && in_array('009_service_plans', $ledger ?? [], true), $missing009 ? 'missing: ' . implode(', ', $missing009) : (in_array('009_service_plans', $ledger ?? [], true) ? 'applied — ' . oneRow($pdo, 'SELECT COUNT(*) n FROM plans')['n'] . ' plans, ' . oneRow($pdo, 'SELECT COUNT(*) n FROM services WHERE plan_id IS NOT NULL')['n'] . ' services on a plan' : 'columns present but not recorded'));
 if (!$missing005) { $w = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM services) s, (SELECT COUNT(*) FROM archive_whmcs) a, (SELECT COUNT(*) FROM charges) c, (SELECT COUNT(*) FROM archive_whmcs WHERE JSON_SEARCH(source_record,'one','%password%') IS NOT NULL OR JSON_CONTAINS_PATH(source_record,'one','$.Password')) pw");
   $add('WHMCS import', true, (int)$w['s'] ? $w['s'] . ' services, ' . $w['a'] . ' archived WHMCS rows, ' . $w['c'] . ' invoiced periods' : 'not imported yet');
   $add('No passwords in the WHMCS archive', (int)$w['pw'] === 0, (int)$w['pw'] ? $w['pw'] . ' rows mention a password' : ''); }

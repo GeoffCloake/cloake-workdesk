@@ -392,3 +392,5 @@ details.more-details{background:transparent}
 .sync-diff .sync-tag,.sync-match .sync-tag{background:#fff3dc;color:#8a5a00}
 .sync-missing .sync-tag,.sync-lost .sync-tag{background:#fbe9e4;color:var(--late)}
 .sync-list label.check{display:flex;gap:6px;margin-top:4px}
+/* v0.19 plans: small mailbox-count box beside the plan choice */
+.mini-num{width:4.2em;min-height:32px;padding:0 6px}

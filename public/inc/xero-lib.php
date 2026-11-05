@@ -159,7 +159,7 @@ function cm_xero_create_draft(array &$x, array $client, array $lines, string $du
     $inv = ['Type' => 'ACCREC', 'Status' => 'DRAFT', 'LineAmountTypes' => 'Exclusive', 'Contact' => cm_xero_contact($x, $client),
         'Date' => date('Y-m-d'), 'DueDate' => $dueDate, 'Reference' => mb_substr($reference, 0, 255),
         // v0.17.1: the tax rate is always sent (a draft whose account Xero doesn't know otherwise gets no GST at all)
-        'LineItems' => array_map(fn($l) => array_filter(['Description' => function_exists('cm_desc_clean') ? cm_desc_clean((string)$l['description']) : (string)$l['description'], 'Quantity' => 1, 'UnitAmount' => round((float)$l['amount'], 2), 'AccountCode' => (string)($l['account'] ?? ''), 'TaxType' => $taxType], fn($v) => $v !== ''), $lines)];
+        'LineItems' => array_map(fn($l) => array_filter(['ItemCode' => (string)($l['item_code'] ?? ''), 'Description' => function_exists('cm_desc_clean') ? cm_desc_clean((string)$l['description']) : (string)$l['description'], 'Quantity' => 1, 'UnitAmount' => round((float)$l['amount'], 2), 'AccountCode' => (string)($l['account'] ?? ''), 'TaxType' => $taxType], fn($v) => $v !== ''), $lines)];
     if ($inv['Status'] !== 'DRAFT') throw new LogicException('Only drafts may be created.');
     [$st, $j, $raw] = cm_xero_api($x, 'POST', '/Invoices?summarizeErrors=true', ['Invoices' => [$inv]]);
     $out = $j['Invoices'][0] ?? null;

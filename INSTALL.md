@@ -1,3 +1,22 @@
+# Install v0.19.0 (build 20261105.2) — and how to undo it
+
+**What changes:** application files and **database migration 009** (add-only: a new `plans` table with your six plans, and `plan_id` + `mailboxes` on services). Includes v0.18.2 (short Xero descriptions). **No Xero reconnect needed.**
+
+## 1. Install (WHM Terminal, 2 minutes)
+1. `su -s /bin/bash - cloakecrea`
+2. `cm-update v0.19.0` → the dry run lists `009_service_plans — PENDING` → `y` → the installer backs up the database, applies 009 and shows `Verified: … v0.19.0 · build 20261105.2`.
+3. More… › **Release check**: "Migration 009 — service plans: applied — 6 plans, 0 services on a plan".
+
+## 2. Set up plans (10 minutes)
+1. More… › **Plans**: check the six prices (today's price for new clients). Edit any that are wrong.
+2. **Match … services without a plan**: clear matches are ticked; choose a plan for the rest (e.g. Advanced for Inland Adventures), untick any you're unsure of → **Link ticked services**. Undo is offered straight after.
+3. While Xero is connected to the Demo Company, Plans shows ✗ Not in Xero — you can try **Create ticked in Xero** there. When you connect your real organisation, do it once there.
+
+## Undo
+`cm-update v0.18.2` (or `v0.18.1`) — the older app ignores the new table and columns. Only if the migration itself must go: `php deploy/migrate.php rollback --confirm` from the v0.19.0 release folder (drops plans and the two columns).
+
+---
+
 # Install v0.18.2 (build 20261105.1) — and how to undo it
 
 **What changes:** application files only. **No database change.** Xero descriptions on Pending Invoicing and drafts become one short line.

@@ -1,3 +1,22 @@
+# Test report — v0.19.0 · build 20261105.2
+
+**Result: 139 of 139 tests passed** on synthetic data on MariaDB 10.11 and on MySQL 8.0.46. Migration 009 applied by the runner on both; rolled back and re-applied on MySQL 8 (table and columns dropped, then recreated with the six plans).
+Xero calls run against the local stand-in (`tests/xero-mock.php`), which now also plays Xero's Items.
+
+| ID | Proven |
+|---|---|
+| PL01 | Six plans seeded with the agreed codes, prices and periods; services.plan_id and services.mailboxes exist; Plans is on More; release check shows migration 009 and passes |
+| PL02 | Proposals: $152.70/6 m → Essential + 1 mailbox; $201/6 m → Standard (older price); $33.50 monthly → Standard; domain → DOMAIN; email $35.40/yr → MAILBOX × 1; $390/6 m not ticked and no plan chosen (Advanced never automatic). Link sets plan and mailboxes; no price changes; one Undo clears all |
+| PL03 | New service on Standard, 6 months, 2 mailboxes, price blank → $335.10; Pending Invoicing line ends "(6 months). Includes 2 mailboxes"; set to $201 → service page "legacy price — list price now $299.70" |
+| PL04 | Plan price 135 → 140 saved and audited; Undo → 135; "BAD CODE" and a duplicate code refused |
+| PX01 | Xero has DOMAIN at $45 → "differs"; Create ticked sends five items (code, name, price, account 43504, OUTPUT2; DNS without a price, no ItemID); Update Xero sends DOMAIN's ItemID with $49.95 and 43601; all six then ✓ with item ids stored; Xero's own WEB-DEV item listed apart |
+| PX02 | Draft line for a service on Standard has ItemCode HOST-STD with Workdesk's amount and description; a service with no plan sends no ItemCode |
+| Layout | Plans, Match services and New plan pass the 320/375/390/430/1280 px checks (no sideways scroll, CSP, JS errors) |
+
+**On your data (preview from the 21 Oct WHMCS export, live hosting only):** about 37 of 51 hosting services match a plan clearly (Essential 9, Standard 6 at today's price and 20 at the older $201 price, some with mailboxes); about 14 are left for you to choose — including 3 at $390 (likely Advanced) and one at $540.
+
+---
+
 # Test report — v0.18.2 · build 20261105.1
 
 **Result: 133 of 133 tests passed** on synthetic data, on MariaDB 10.11 and on MySQL 8.0.46. No database change.
