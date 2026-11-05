@@ -1,3 +1,15 @@
+# Install v0.18.2 (build 20261105.1) — and how to undo it
+
+**What changes:** application files only. **No database change.** Xero descriptions on Pending Invoicing and drafts become one short line.
+
+1. `su -s /bin/bash - cloakecrea`
+2. `cm-update v0.18.2` → `Database: schema up to date` → `y` → `Verified: … v0.18.2 · build 20261105.1`.
+3. Open Pending Invoicing: hosting lines read "Website hosting – domain – dates (6 months)".
+
+**Undo:** `cm-update v0.18.1`.
+
+---
+
 # Install v0.18.1 (build 20261104.3) — and how to undo it
 
 **What changes:** application files only. **No database change.** (Includes v0.17.1 and v0.18.0 — install v0.18.1 directly.)

@@ -56,19 +56,36 @@ function cm_period_end(string $start, int $months): string { return (new DateTim
 function cm_dmy(string $d): string { return (new DateTimeImmutable($d))->format('d/m/Y'); }
 function cm_account_for(PDO $pdo, string $kind): string { return cm_setting($pdo, $kind === 'domain' ? 'xero_account_domain' : 'xero_account_hosting'); }
 
-/** Suggested Xero line description, in Cathy's patterns. */
+/** Suggested Xero line description (v0.18.2): one short line, no plan names or software versions, no email setup. */
 function cm_service_description(array $s, string $start, string $end): string
 {
-    $dom = (string)($s['domain'] ?: $s['label'] ?: '');
-    $per = '(' . cm_dmy($start) . ' - ' . cm_dmy($end) . ')';
-    $bp = "\nBilling Period: " . (int)$s['cycle_months'] . ' Month' . ((int)$s['cycle_months'] === 1 ? '' : 's');
+    $dom = cm_desc_clean((string)($s['domain'] ?: $s['label'] ?: ''));
+    $m = (int)($s['cycle_months'] ?: ($s['kind'] === 'domain' ? 12 : 0));
+    $len = $m <= 0 ? '' : ($m % 12 === 0 ? ($m / 12) . ' year' . ($m === 12 ? '' : 's') : $m . ' month' . ($m === 1 ? '' : 's'));
+    $per = cm_dmy($start) . ' to ' . cm_dmy($end) . ($len ? " ($len)" : '');
+    $mb = (int)($s['mailboxes'] ?? 0);
+    $mbTxt = $mb > 0 ? $mb . ' mailbox' . ($mb === 1 ? '' : 'es') : '';
     switch ($s['kind']) {
-        case 'domain': $yrs = max(1, intdiv((int)($s['cycle_months'] ?: 12), 12)); return "Domain Renewal - $dom - $yrs Year/s $per";
-        case 'email': return "Email Only - $dom $per$bp";
-        case 'dns': return "DNS and Forwarding - $dom $per$bp";
-        case 'maintenance': return 'Website Maintenance - ' . $dom . ' ' . $per . $bp;
-        default: return 'WEBSITE HOSTING - ' . ($s['plan_name'] ? $s['plan_name'] . ' - ' : '') . "$dom $per$bp" . (!empty($s['included_domains']) ? "\nAdditional Domains: " . implode(', ', $s['included_domains']) : '');
+        case 'domain': $out = "Domain renewal – $dom – $per"; break;
+        case 'email': $out = 'Email hosting – ' . $dom . ($mbTxt ? " – $mbTxt" : '') . " – $per"; break;
+        case 'dns': $out = "DNS and forwarding – $dom – $per"; break;
+        case 'maintenance': $out = "Website maintenance – $dom – $per"; break;
+        default:
+            $out = "Website hosting – $dom – $per";
+            $inc = array_values(array_filter(array_map('cm_desc_clean', (array)($s['included_domains'] ?? []))));
+            $extra = array_filter([$inc ? implode(', ', $inc) : '', $mbTxt]);
+            if ($extra) $out .= '. Includes ' . implode(' and ', $extra);
     }
+    return cm_desc_clean($out);
+}
+
+/** Never let an email address, web address or login-looking text into a Xero description. */
+function cm_desc_clean(string $t): string
+{
+    $t = preg_replace('~\b[\w.+-]+@[\w-]+(\.[\w-]+)+\b~u', '', $t);
+    $t = preg_replace('~\bhttps?://\S+~iu', '', $t);
+    $t = preg_replace('~\b(user(name)?|login|pass(word)?|pwd|pw)\s*[:=]\s*\S+~iu', '', $t);
+    return trim(preg_replace('~[ \t]{2,}~', ' ', $t));
 }
 
 /** The billable hours on a task not yet charged (optionally up to a date), and their value at the hourly rate. */

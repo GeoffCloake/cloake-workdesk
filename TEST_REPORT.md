@@ -1,3 +1,15 @@
+# Test report — v0.18.2 · build 20261105.1
+
+**Result: 133 of 133 tests passed** on synthetic data, on MariaDB 10.11 and on MySQL 8.0.46. No database change.
+
+| ID | Proven (new or changed) |
+|---|---|
+| R12 | (new) descriptions for hosting (with and without included domains and mailboxes), email, domain, DNS and monthly cycles match the new one-line wording; a label holding a web address, a login, a password and an email address comes out with none of them |
+| R03 | (changed) Pending Invoicing shows "Website hosting – … – dd/mm/yyyy to … (6 months)", with no PHP version, plan name or "Billing Period" |
+| D-tests, XD04 | (changed) included domains appear after "Includes"; the Xero draft line starts "Website hosting – …" |
+
+---
+
 # Test report — v0.18.1 · build 20261104.3
 
 **Result: 132 of 132 tests passed** on your real-data replica (MySQL 8.0.46), on synthetic data (MariaDB 10.11), and on the copy installed by `cm-update v0.18.1` over v0.18.0. No database change; `cm-update v0.17.0` goes back and verifies.

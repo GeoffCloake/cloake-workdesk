@@ -3,6 +3,17 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.18.2 · build 20261105.1 — 5 November 2026
+**Status: built and tested locally.** 133/133 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **No database change.** `cm-update v0.18.1` goes back.
+
+### Changed — short Xero descriptions (your request)
+- One line per item, no plan names or software (PHP) versions, no email set-up details, no cost breakdown:
+  - `Website hosting – example.co.nz – 20/11/2026 to 19/05/2027 (6 months)` · with included domains `… (6 months). Includes example.nz`
+  - `Email hosting – example.co.nz – 1 mailbox – …` · `Domain renewal – example.nz – … (1 year)` · `DNS and forwarding – example.co.nz – …`
+- Mailboxes are mentioned only when a service has them (the count arrives with v0.19 plans).
+- Safety net: email addresses, web addresses and anything that looks like a login or password are never put in a Xero description (Pending Invoicing, recorded invoices and drafts).
+- The service form's "Plan" box is now for your records only (not on invoices).
+
 ## v0.18.1 · build 20261104.3 — 4 November 2026
 **Status: built and tested locally (Xero calls against the local stand-in).** 132/132 on MySQL 8.0.46 (real-data replica) and MariaDB; installed with `cm-update v0.18.1` and the full suite passed on the installed copy; `cm-update v0.17.0` goes back. **No database change.** Includes everything in v0.18.0 and v0.17.1 — install this one.
 

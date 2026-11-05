@@ -1221,10 +1221,14 @@ function protectedChecksums() {
     const txt = await card.innerText();
     const s1 = one(`SELECT next_period_start FROM services WHERE source_id='S1'`);
     const dmy = iso => iso.split('-').reverse().join('/');
-    assert(txt.includes(`WEBSITE HOSTING - Standard - CMS with PHP 7 - harbourviewmotel.example.nz (${dmy(s1)} -`) && txt.includes('Billing Period: 6 Months'), 'hosting description: ' + txt.slice(0, 300));
-    assert(txt.includes('Domain Renewal - harbourviewmotel.example.nz - 1 Year/s') && txt.includes('Email Only - harbourviewmotel.example.nz'), 'domain/email descriptions');
+    assert(txt.includes(`Website hosting – harbourviewmotel.example.nz – ${dmy(s1)} to `) && txt.includes('(6 months)') && !/PHP|Billing Period|Standard - CMS/.test(txt), 'hosting description: ' + txt.slice(0, 300));
+    assert(txt.includes('Domain renewal – harbourviewmotel.example.nz – ') && txt.includes('(1 year)') && txt.includes('Email hosting – harbourviewmotel.example.nz'), 'domain/email descriptions');
     assert(/overdue/i.test(txt) && txt.includes('Account 43504') && txt.includes('Account 43601') && txt.includes(money(201 * 1.15)), 'overdue / accounts / incl GST');
     assert(!(await P.locator('main').innerText()).includes('cloake.example.nz'), 'internal service listed');
+  });
+  await test('R12', 'Xero descriptions are one short line: no plan names or PHP versions, mailboxes only when provisioned, no email addresses, web addresses or logins', async () => {
+    const r = execFileSync('php', [path.join(__dirname, 'unit-descriptions.php')], { encoding: 'utf8' }).trim();
+    assert(r === 'OK', r);
   });
   await test('R04', 'Record one Xero invoice for two ticked lines: charges with the number and who; each service moves on one cycle; Undo puts everything back', async () => {
     const s1 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S1'`)[0], s2 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S2'`)[0];
@@ -1533,7 +1537,7 @@ function protectedChecksums() {
       assert(/test-d-host/.test(await P.locator('[data-testid=included-in]').innerText()), 'service page');
       await go(P, 'index.php?page=domains&show=unlinked'); assert(await P.locator('a[data-domain="test-d-free.example.nz"]').count() === 0, 'still unlinked');
       await go(P, 'index.php?page=service&id=' + host);
-      assert(/test-d-free\.example\.nz/.test(await P.locator('[data-testid=included-domains]').innerText()) && /Additional Domains: test-d-free\.example\.nz/.test(await P.locator('main').innerText()), 'hosting description');
+      assert(/test-d-free\.example\.nz/.test(await P.locator('[data-testid=included-domains]').innerText()) && /Includes test-d-free\.example\.nz/.test(await P.locator('main').innerText()), 'hosting description');
       await go(P, 'index.php?page=service&id=' + dFree); await P.locator('[data-testid=include-form] summary').click(); await P.selectOption('#inc-host', ''); await clickIn(P, '[data-testid=include-form] button[type=submit]');
       await undoClick(P); assert(num(`SELECT COALESCE(included_in_service_id,0) FROM services WHERE id=${dFree}`) === host, 'undo of removal');
       const foreign = mk('test-d-other-host.example.nz', 'hosting', { client: other });
@@ -1546,7 +1550,7 @@ function protectedChecksums() {
       await go(P, 'service-edit.php?id=' + dBilled); await P.selectOption('#included_in_service_id', String(host)); await save(P);
       assert(one(`SELECT CONCAT(billable,'/',included_in_service_id) FROM services WHERE id=${dBilled}`) === '0/' + host, 'not forced to no charge');
       await go(P, 'index.php?page=invoicing'); const txt = await P.locator('main').innerText();
-      assert(!txt.includes('test-d-billed.example.nz') || /Additional Domains:[^\n]*test-d-billed/.test(txt), 'still due on its own');
+      assert(!txt.includes('test-d-billed.example.nz') || /Includes[^\n]*test-d-billed/.test(txt), 'still due on its own');
       sql(`UPDATE services SET billable=1 WHERE id=${dBilled}`);   // even if someone ticks "billed" again, an included domain is never invoiced alone
       const csrf = await csrfOf(P); await postAndGo(P, 'invoice-record.php', { csrf, 'keys[]': key, invoice_number: 'INV-D04', recorded_by: 'Test' });
       assert(num(`SELECT COUNT(*) FROM charges WHERE xero_invoice_number='INV-D04'`) === 0, 'included domain invoiced');
@@ -1632,7 +1636,7 @@ function protectedChecksums() {
       assert(/Draft INV-9001 created in Xero/.test(await P.locator('[data-testid=draft-made]').innerText()), 'message');
       const post = mlog().filter(r => r.p === '/api/Invoices'); assert(post.length === 1, 'posts ' + post.length);
       const inv = JSON.parse(post[0].b).Invoices[0];
-      assert(inv.Status === 'DRAFT' && inv.Type === 'ACCREC' && inv.LineAmountTypes === 'Exclusive' && inv.LineItems.length === 1 && inv.LineItems[0].UnitAmount === 240 && inv.LineItems[0].AccountCode === '43504' && /WEBSITE HOSTING - test-xd04\.example\.nz/.test(inv.LineItems[0].Description), 'payload ' + JSON.stringify(inv));
+      assert(inv.Status === 'DRAFT' && inv.Type === 'ACCREC' && inv.LineAmountTypes === 'Exclusive' && inv.LineItems.length === 1 && inv.LineItems[0].UnitAmount === 240 && inv.LineItems[0].AccountCode === '43504' && /^Website hosting – test-xd04\.example\.nz – \d\d\/\d\d\/\d{4} to /.test(inv.LineItems[0].Description), 'payload ' + JSON.stringify(inv));
       assert(inv.LineItems[0].TaxType === 'OUTPUT2' && await P.locator('[data-testid=draft-warn]').count() === 0, 'tax type / unexpected warning'); assert(inv.Reference === 'test-xd04.example.nz', 'reference ' + inv.Reference);
       assert(inv.Contact.Name === one(`SELECT name FROM clients WHERE id=${xc}`) && post[0].tenant === '11111111-2222-3333-4444-555555555555' && inv.DueDate === todayNZ, 'contact/tenant/due');
       const c = sql(`SELECT xero_invoice_number, LENGTH(xero_invoice_id), recorded_by, amount_ex_gst FROM charges WHERE source_kind='service' AND source_id=${s1}`);
