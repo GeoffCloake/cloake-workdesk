@@ -1,3 +1,17 @@
+# Test report — v0.21.0 · build 20261105.5
+
+**Result: 145 of 145 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. Migration 010 applied by the runner on both.
+
+| ID | Proven |
+|---|---|
+| ST01 | services.keep_billing exists; an Active service is on Pending Invoicing; set Suspended, then Pending → gone, with "not billed" on its page; "Keep billing" ticked → back; Terminated offered on the form; release check shows migration 010 |
+| ST02 | A service whose cPanel username isn't on the server is listed; "Mark ticked as terminated" → Terminated; Undo → Active. An Active service on an account suspended on the server is listed; "Set ticked to Suspended" → Suspended |
+| ST03 | Development account set in Billing settings → its site (a subdomain) is listed and the account is not an "account with no service"; Record with a client → Pending, no charge, that client, that cPanel user; shown as recorded; not on Pending Invoicing |
+| ST04 | Domains › Expired: 90 days expired pre-ticked, 5 days not; Mark ticked as terminated ends only the ticked one |
+| R03, R05, R11 | (changed) count only Active (or Keep billing) services; the WHMCS "Pending" fixture service is billed with Keep billing ticked |
+
+---
+
 # Test report — v0.20.1 · build 20261105.4
 
 **Result: 141 of 141 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. No database change.

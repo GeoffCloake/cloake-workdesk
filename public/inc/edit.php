@@ -29,7 +29,9 @@ const CM_UNDOABLE = ['client_updated' => 'clients', 'contact_updated' => 'contac
     // v0.19: a plan's details (payload row_id); several services linked to plans at once ('*')
     'service_plan_updated' => 'plans', 'services_plans_matched' => '*',
     // v0.20: mailbox counts taken from cPanel for several services at once
-    'services_mailboxes_updated' => '*'];
+    'services_mailboxes_updated' => '*',
+    // v0.21: several services terminated / suspended at once
+    'services_status_updated' => '*'];
 /** Tables a multi-row undo ('*') may touch. */
 const CM_UNDO_MULTI_TABLES = ['tasks', 'clients', 'services'];
 /** How long after saving the Undo link stays usable (seconds). */

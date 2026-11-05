@@ -1215,7 +1215,7 @@ function protectedChecksums() {
   await test('R03', 'Pending Invoicing: renewals due within 8 weeks (and overdue) grouped by client, Xero description pattern, account, ex and incl GST', async () => {
     await go(P, 'index.php?page=invoicing');
     const lead = new Date(Date.now() + 56 * 86400000); const hor = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(lead);
-    const due = num(`SELECT COUNT(*) FROM services WHERE status IN ('active','pending','suspended') AND billable=1 AND is_internal=0 AND price_ex_gst>0 AND cycle_months>0 AND next_period_start<='${hor}'`);
+    const due = num(`SELECT COUNT(*) FROM services WHERE (status='active' OR (status IN ('pending','suspended') AND keep_billing=1)) AND billable=1 AND is_internal=0 AND price_ex_gst>0 AND cycle_months>0 AND next_period_start<='${hor}'`);
     assert(await P.locator('input[name="keys[]"][value^="svc:"]').count() === due, 'due renewals ' + due);
     const card = P.locator('[data-testid=invoice-client]', { hasText: 'harbourviewmotel.example.nz' });
     const txt = await card.innerText();
@@ -1314,6 +1314,68 @@ function protectedChecksums() {
     await go(P, 'index.php?page=check'); assert(/cPanel inventory \(nightly, read-only\)\s*as at/.test(await P.locator('.checklist').innerText()), 'release check');
     sql(`DELETE FROM services WHERE id=${sid}`); try { fs.unlinkSync(INV); } catch (e) { }
   });
+  /* ---------- v0.21: billing follows the service status; terminated; development sites ---------- */
+  const mkInv = () => { const users = path.join(OUT, 'cpusers'); fs.mkdirSync(users, { recursive: true }); for (const u of ['testacct1', 'testacct2']) fs.writeFileSync(path.join(users, u), ''); execFileSync('php', [path.join(__dirname, '../deploy/email-inventory.php')], { env: { ...process.env, CM_UAPI: path.join(__dirname, 'fixture/fake-uapi.sh'), CM_WHMAPI: path.join(__dirname, 'fixture/fake-whmapi1.sh'), CM_USERS_DIR: users, CM_EMAIL_OUT: INV } }); };
+  const mkSvc = (d, extra = '') => { sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,price_ex_gst,cycle_months,next_period_start,source_system,created_at${extra ? ',' + extra.split('=')[0] : ''}) VALUES (${S.client.id},'hosting','${d}','active',1,0,201,6,'${todayNZ}','app',NOW()${extra ? ",'" + extra.split('=')[1] + "'" : ''})`); return num(`SELECT id FROM services WHERE domain='${d}'`); };
+  await test('ST01', 'Migration 010: only Active services are invoiced — a Suspended or Pending (in development) service leaves Pending Invoicing and its page says "not billed"; ticking "Keep billing" brings it back; Terminated is a status', async () => {
+    assert(num(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='services' AND COLUMN_NAME='keep_billing'`) === 1, 'column');
+    const id = mkSvc('test-st01.example.nz');
+    const onPI = async () => { await go(P, 'index.php?page=invoicing'); return (await P.locator('main').innerText()).includes('test-st01.example.nz'); };
+    assert(await onPI(), 'active not listed');
+    for (const st of ['suspended', 'pending']) {
+      sql(`UPDATE services SET status='${st}', keep_billing=0 WHERE id=${id}`);
+      assert(!(await onPI()), st + ' still listed');
+      await go(P, 'index.php?page=service&id=' + id); assert(/not billed/.test(await P.locator('[data-testid=not-billed-status]').innerText()), st + ' notice');
+    }
+    await go(P, 'service-edit.php?id=' + id); await P.check('input[name=keep_billing]'); await save(P);
+    assert(one(`SELECT keep_billing FROM services WHERE id=${id}`) === '1' && await onPI(), 'keep billing');
+    await go(P, 'service-edit.php?id=' + id); assert(await P.locator('#status option[value=terminated]').count() === 1, 'terminated status');
+    sql(`DELETE FROM services WHERE id=${id}`);
+    await go(P, 'index.php?page=check'); assert(/Migration 010/.test(await P.locator('.checklist').innerText()) && !(await P.$$eval('.checklist li.bad', l => l.length)), 'release check');
+  });
+  await test('ST02', 'cPanel check: services with no account → tick, "Mark ticked as terminated" (one Undo puts them back); an Active service whose account is suspended on the server → "Set ticked to Suspended"', async () => {
+    mkInv();
+    const gone = mkSvc('test-st02-gone.example.nz', 'cpanel_username=nosuchuser');
+    const susp = mkSvc('test-c01-orphan.example.nz', 'cpanel_username=testacct2');
+    await go(P, 'cpanel-check.php');
+    const f = P.locator('[data-testid=cpanel-none-list] form');
+    for (const b of await f.locator('input[name="sids[]"]').all()) if ((await b.getAttribute('value')) !== String(gone)) await b.uncheck(); else await b.check();
+    await Promise.all([P.waitForNavigation(), f.locator('button').click()]);
+    assert(one(`SELECT status FROM services WHERE id=${gone}`) === 'terminated', 'not terminated');
+    await undoClick(P); assert(one(`SELECT status FROM services WHERE id=${gone}`) === 'active', 'undo');
+    await go(P, 'cpanel-check.php');
+    const g = P.locator('[data-testid=cpanel-suspended]'); assert(await g.locator(`[data-service="${susp}"]`).count() === 1, 'suspended account not flagged');
+    for (const b of await g.locator('input[name="sids[]"]').all()) if ((await b.getAttribute('value')) !== String(susp)) await b.uncheck();
+    await Promise.all([P.waitForNavigation(), g.locator('button').click()]);
+    assert(one(`SELECT status FROM services WHERE id=${susp}`) === 'suspended', 'not suspended');
+    sql(`DELETE FROM services WHERE id IN (${gone},${susp})`);
+  });
+  await test('ST03', 'Development accounts (Billing settings): their sites are listed on cPanel check; Record with a client creates "Pending — in development" with no charge, which is never on Pending Invoicing', async () => {
+    mkInv();
+    await go(P, 'billing-settings.php'); await P.fill('#dev_accounts', 'testacct2'); await P.fill('#updated_by', 'Test'); await save(P);
+    await go(P, 'cpanel-check.php');
+    const row = P.locator('[data-testid=cpanel-dev] [data-site="clientsite.test-c01-orphan.example.nz"]');
+    assert(await row.count() === 1 && !(await P.locator('[data-testid=cpanel-orphans]').count() && /testacct2/.test(await P.locator('[data-testid=cpanel-orphans]').textContent())), 'dev site / orphan');
+    await row.locator('select').selectOption(String(S.client.id)); await Promise.all([P.waitForNavigation(), row.locator('button').click()]);
+    const s = sql(`SELECT status, billable, client_id, cpanel_username FROM services WHERE domain='clientsite.test-c01-orphan.example.nz'`)[0];
+    assert(s && s.join() === `pending,0,${S.client.id},testacct2`, 'recorded ' + JSON.stringify(s));
+    assert(/recorded for/.test(await P.locator('[data-testid=cpanel-dev] [data-site="clientsite.test-c01-orphan.example.nz"]').innerText()), 'not shown as recorded');
+    await go(P, 'index.php?page=invoicing'); assert(!(await P.locator('main').innerText()).includes('clientsite.test-c01-orphan'), 'dev site on Pending Invoicing');
+    sql(`DELETE FROM services WHERE domain='clientsite.test-c01-orphan.example.nz'`); sql(`UPDATE settings SET v='' WHERE k='dev_accounts'`);
+    try { fs.unlinkSync(INV); } catch (e) { }
+  });
+  await test('ST04', 'Domains › Expired: domains expired over 30 days ago are pre-ticked; "Mark ticked as terminated" ends them in one undoable change', async () => {
+    sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,expiry_date,source_system,created_at) VALUES (${S.client.id},'domain','test-st04-old.example.nz','active',0,0,DATE_SUB(CURDATE(), INTERVAL 90 DAY),'app',NOW()),(${S.client.id},'domain','test-st04-new.example.nz','active',0,0,DATE_SUB(CURDATE(), INTERVAL 5 DAY),'app',NOW())`);
+    await go(P, 'index.php?page=domains&show=expired');
+    const f = P.locator('[data-testid=domains-terminate]');
+    const box = d => f.locator(`[data-service="${one(`SELECT id FROM services WHERE domain='${d}'`)}"] input`);
+    assert(await box('test-st04-old.example.nz').isChecked() && !(await box('test-st04-new.example.nz').isChecked()), 'pre-ticks');
+    for (const b of await f.locator('input[name="sids[]"]').all()) await b.uncheck();
+    await box('test-st04-old.example.nz').check();
+    await Promise.all([P.waitForNavigation(), f.locator('button').click()]);
+    assert(one(`SELECT status FROM services WHERE domain='test-st04-old.example.nz'`) === 'terminated' && one(`SELECT status FROM services WHERE domain='test-st04-new.example.nz'`) === 'active', 'statuses');
+    sql(`DELETE FROM services WHERE domain LIKE 'test-st04-%'`);
+  });
   await test('R04', 'Record one Xero invoice for two ticked lines: charges with the number and who; each service moves on one cycle; Undo puts everything back', async () => {
     const s1 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S1'`)[0], s2 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S2'`)[0];
     await go(P, 'index.php?page=invoicing');
@@ -1329,6 +1391,7 @@ function protectedChecksums() {
     assert(num(`SELECT COUNT(*) FROM charges WHERE xero_invoice_number='INV-T0401'`) === 0 && one(`SELECT next_period_start FROM services WHERE id=${s1[0]}`) === s1[1], 'undo');
   });
   await test('R05', 'Recording is refused (nothing saved) for lines of two clients, an already-recorded period, or no invoice number / name', async () => {
+    sql(`UPDATE services SET keep_billing=1 WHERE source_id='S7'`);   // v0.21: the WHMCS-pending fixture service is billed only with "Keep billing"
     await go(P, 'index.php?page=invoicing'); const csrf = await P.locator('input[name=csrf]').first().inputValue();
     const a = sql(`SELECT id,next_period_start FROM services WHERE source_id='S1'`)[0], b = sql(`SELECT id,next_period_start FROM services WHERE source_id='S7'`)[0];
     const n0 = num('SELECT COUNT(*) FROM charges');

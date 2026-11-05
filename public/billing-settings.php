@@ -20,6 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (in_array($k, ['xero_tax_type', 'xero_tax_type_overseas'], true) && !preg_match('/^[A-Z0-9]{2,20}$/', $v)) throw new InvalidArgumentException('Xero tax type is Xero\'s code, e.g. OUTPUT2 (15% GST on Income).');
             if ($k === 'material_markup_pct' && $v !== '' && !preg_match('/^\d{1,3}(\.\d{1,2})?$/', $v)) throw new InvalidArgumentException('Materials markup is a percentage, e.g. 20.');
             if ($k === 'management_mailboxes') { $v = strtolower(preg_replace('/\s*,\s*/', ', ', $v)); if ($v !== '' && !preg_match('/^[a-z0-9._*+-]+(, [a-z0-9._*+-]+)*$/', $v)) throw new InvalidArgumentException('Management mailboxes: names before the @ (letters, numbers, . _ - + and *), separated by commas.'); }
+            if ($k === 'dev_accounts') { $v = strtolower(preg_replace('/\s*,\s*/', ', ', $v)); if ($v !== '' && !preg_match('/^[a-z][a-z0-9]{0,31}(, [a-z][a-z0-9]{0,31})*$/', $v)) throw new InvalidArgumentException('Development accounts: cPanel usernames separated by commas.'); }
             if ($k === 'management_subdomains') { $v = strtolower($v); if (!in_array($v, ['yes', 'no'], true)) throw new InvalidArgumentException('Mailboxes on subdomains: yes or no.'); }
             $old = oneRow($pdo, 'SELECT v FROM settings WHERE k=? FOR UPDATE', [$k]);
             if ((string)($old['v'] ?? CM_SETTINGS[$k][1]) === $v && $old) continue;
@@ -37,7 +38,7 @@ cm_page_start('Billing settings', 'billing', ['back' => [route('invoicing'), 'Pe
 <?php if (isset($_GET['saved'])): ?><div class="success" role="status"><?=$_GET['saved'] === '1' ? 'Saved.' : 'No changes.'?></div><?php endif; ?>
 <form method="post" class="form"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>">
 <?php foreach (CM_SETTINGS as $k => [$label]): $v = $_SERVER['REQUEST_METHOD'] === 'POST' && is_string($_POST[$k] ?? null) ? trim($_POST[$k]) : cm_setting($pdo, $k); ?>
-<div class="field"><label for="<?=h($k)?>"><?=h($label)?></label><input id="<?=h($k)?>" name="<?=h($k)?>" maxlength="255" value="<?=h($v)?>"<?=$k === 'charges_from' ? ' type="date"' : (str_starts_with($k, 'xero_tax_type') ? ' spellcheck="false" autocapitalize="characters"' : (str_starts_with($k, 'management_') ? ' spellcheck="false" autocapitalize="none"' : ' inputmode="decimal"'))?>></div>
+<div class="field"><label for="<?=h($k)?>"><?=h($label)?></label><input id="<?=h($k)?>" name="<?=h($k)?>" maxlength="255" value="<?=h($v)?>"<?=$k === 'charges_from' ? ' type="date"' : (str_starts_with($k, 'xero_tax_type') ? ' spellcheck="false" autocapitalize="characters"' : (str_starts_with($k, 'management_') || $k === 'dev_accounts' ? ' spellcheck="false" autocapitalize="none"' : ' inputmode="decimal"'))?>></div>
 <?php endforeach; ?>
 <p class="helper">Task fees: completed tasks billed on completion appear on Pending Invoicing only if they were completed on or after this date (so old work doesn't flood the list). Leave it empty to show none.</p>
 <div class="field"><label for="updated_by">Your name</label><input id="updated_by" name="updated_by" maxlength="100" required value="<?=h((string)($_SESSION['cm_last_staff'] ?? ''))?>"></div>

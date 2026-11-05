@@ -1,3 +1,18 @@
+# Install v0.21.0 (build 20261105.5) — and how to undo it
+
+**What changes:** application files and **database migration 010** (add-only: services.keep_billing). From now on **only Active services are invoiced** — Suspended and Pending (in development) are not, unless "Keep billing" is ticked on the service.
+
+1. `su -s /bin/bash - cloakecrea`
+2. `cm-update v0.21.0` → dry run lists `010_billing_status — PENDING` → `y` → `Verified: … v0.21.0 · build 20261105.5`.
+3. More… › **Release check**: Migration 010 applied.
+4. **Billing settings › Development cPanel accounts:** the cPanel username(s) of your development account(s).
+5. **cPanel check:** mark the gone ones as terminated, set server-suspended ones to Suspended, record development sites. **Domains › Expired:** mark the gone ones as terminated.
+6. **Pending Invoicing:** anything Suspended / Pending you *do* still want to bill → open the service › Edit › tick "Keep billing".
+
+**Undo:** `cm-update v0.20.1` (the older app ignores the new column and bills Suspended/Pending again).
+
+---
+
 # Install v0.20.1 (build 20261105.4) — and how to undo it
 
 **What changes:** application files only. **No database change.**

@@ -30,6 +30,7 @@ $xs = cm_expiry_state($s['expiry_date'] ?? null, $today);
   <div><small>Price ex GST</small><strong><?=$s['is_internal'] ? 'Internal' : (!$s['billable'] ? 'No charge' : ($s['price_ex_gst'] !== null ? h(cm_money($s['price_ex_gst'])) : '—'))?></strong></div>
   <div><small>Next period</small><strong class="<?=$late ? 'late' : ''?>" data-testid="next-period"><?=$billed && $s['next_period_start'] ? h(niceDate($s['next_period_start'])) : '—'?></strong></div>
 </div>
+<?php if ($billed && in_array($s['status'], ['pending', 'suspended'], true) && !cm_billed_by_status($s)): ?><p class="notice" data-testid="not-billed-status"><strong><?=h(CM_SERVICE_STATUSES[$s['status']])?> — not billed.</strong> It goes back on Pending Invoicing when it is Active again, or tick “Keep billing” on the service.</p><?php endif; ?>
 <?php if ($s['check_status'] && $s['check_status'] !== 'agrees'): ?><p class="notice"><strong><?=h(CM_CHECK_STATUSES[$s['check_status']] ?? $s['check_status'])?>.</strong> <?=h((string)$s['check_note'])?></p><?php endif; ?>
 <dl class="facts task-facts">
   <dt>Billing</dt><dd><?=h(CM_CYCLES[(string)$s['cycle_months']] ?? '—')?><?=$s['xero_account'] ? ' · Xero account ' . h($s['xero_account']) : ''?></dd>

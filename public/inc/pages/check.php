@@ -44,6 +44,8 @@ $add('Migration 008 — Xero draft invoices', !$missing008 && in_array('008_xero
 $mig009 = ['plans.id', 'plans.code', 'plans.xero_item_id', 'services.plan_id', 'services.mailboxes'];
 $missing009 = array_values(array_filter($mig009, fn($c) => !isset($cols[$c])));
 $add('Migration 009 — service plans', !$missing009 && in_array('009_service_plans', $ledger ?? [], true), $missing009 ? 'missing: ' . implode(', ', $missing009) : (in_array('009_service_plans', $ledger ?? [], true) ? 'applied — ' . oneRow($pdo, 'SELECT COUNT(*) n FROM plans')['n'] . ' plans, ' . oneRow($pdo, 'SELECT COUNT(*) n FROM services WHERE plan_id IS NOT NULL')['n'] . ' services on a plan' : 'columns present but not recorded'));
+$missing010 = isset($cols['services.keep_billing']) ? [] : ['services.keep_billing'];
+$add('Migration 010 — billing follows service status', !$missing010 && in_array('010_billing_status', $ledger ?? [], true), $missing010 ? 'missing: services.keep_billing' : (in_array('010_billing_status', $ledger ?? [], true) ? 'applied' : 'columns present but not recorded'));
 $ci = cm_cpanel_inventory();
 $add('cPanel inventory (nightly, read-only)', true, $ci ? 'as at ' . $ci['at'] . ' — ' . count($ci['accounts']) . ' accounts' . ($ci['age_hours'] > 36 ? ' (more than a day old)' : '') : 'not installed yet');
 if (!$missing005) { $w = oneRow($pdo, "SELECT (SELECT COUNT(*) FROM services) s, (SELECT COUNT(*) FROM archive_whmcs) a, (SELECT COUNT(*) FROM charges) c, (SELECT COUNT(*) FROM archive_whmcs WHERE JSON_SEARCH(source_record,'one','%password%') IS NOT NULL OR JSON_CONTAINS_PATH(source_record,'one','$.Password')) pw");

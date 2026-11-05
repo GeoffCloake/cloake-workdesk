@@ -3,6 +3,19 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.21.0 · build 20261105.5 — 5 November 2026
+**Status: built and tested locally.** 145/145 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **Database migration 010** (add-only: one column, services.keep_billing). `cm-update v0.20.1` goes back.
+
+### Changed — billing follows the service status (your new policy)
+- **Only Active services are invoiced.** Suspended and **Pending — in development** are left off Pending Invoicing (and can't be recorded) unless **Keep billing while suspended or in development** is ticked on the service. The service page says "Suspended — not billed" / "Pending — in development — not billed".
+- New status **Terminated** (for services that have gone; history stays on the client).
+
+### Added — tidying up
+- **cPanel check › No cPanel account found:** tick and **Mark ticked as terminated** — one undoable change (status only).
+- **cPanel check › Suspended on the server, Active here:** **Set ticked to Suspended** (one undoable change), so they stop billing.
+- **Domains › Expired:** **Mark ticked as terminated**; domains expired more than 30 days ago are pre-ticked.
+- **Development accounts** (Billing settings › Development cPanel accounts, e.g. your Devt account): cPanel check lists the sites on them; **Record** with the client creates the service as "Pending — in development" with no charge, so the client's info sits with it and it is never invoiced. Those accounts no longer show as "accounts with no service".
+
 ## v0.20.1 · build 20261105.4 — 5 November 2026
 **Status: built and tested locally.** 141/141 on MariaDB 10.11 and MySQL 8.0.46. **No database change.** `cm-update v0.20.0` goes back.
 

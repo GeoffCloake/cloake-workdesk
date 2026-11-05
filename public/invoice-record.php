@@ -43,6 +43,7 @@ try {
             if (!$s) throw new InvalidArgumentException('A ticked service no longer exists. Reload the page.');
             if ((string)$s['next_period_start'] !== $m[2]) throw new InvalidArgumentException(($s['domain'] ?: $s['label']) . ': that period has already been recorded or its date changed. Reload the page.');
             if (!$s['billable'] || $s['is_internal'] || !$s['cycle_months']) throw new InvalidArgumentException(($s['domain'] ?: $s['label']) . ' is not billed.');
+            if (!cm_billed_by_status($s)) throw new InvalidArgumentException(($s['domain'] ?: $s['label']) . ' is ' . strtolower(CM_SERVICE_STATUSES[$s['status']] ?? $s['status']) . ', so it is not invoiced (tick “Keep billing” on the service to bill it anyway).');
             if (!empty($s['included_in_service_id'])) throw new InvalidArgumentException(($s['domain'] ?: $s['label']) . ' is included in a hosting service, so it is not invoiced on its own.');
             if ($s['kind'] === 'hosting') $s['included_domains'] = cm_included_domains($pdo, (int)$s['id']);
             $one($s['client_id']);

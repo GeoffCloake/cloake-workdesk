@@ -10,8 +10,8 @@ if ($f['show'] === 'live') $where[] = "s.status IN ('active','pending','suspende
 if ($f['charge'] === 'billed') $where[] = 's.billable=1 AND s.is_internal=0'; elseif ($f['charge'] === 'free') $where[] = 's.billable=0 AND s.is_internal=0'; elseif ($f['charge'] === 'internal') $where[] = 's.is_internal=1';
 if ($f['check'] === 'look') $where[] = "s.check_status IS NOT NULL AND s.check_status NOT IN ('','agrees')"; elseif (isset(CM_CHECK_STATUSES[$f['check']]) && $f['check'] !== '') { $where[] = 's.check_status=?'; $args[] = $f['check']; }
 $horizon = (new DateTimeImmutable($today))->modify('+' . max(0, (int)cm_setting($pdo, 'lead_weeks')) . ' weeks')->format('Y-m-d');
-if ($f['due'] === 'overdue') { $where[] = 's.billable=1 AND s.is_internal=0 AND s.next_period_start<?'; $args[] = $today; }
-elseif ($f['due'] === 'soon') { $where[] = 's.billable=1 AND s.is_internal=0 AND s.next_period_start<=?'; $args[] = $horizon; }
+if ($f['due'] === 'overdue') { $where[] = 's.billable=1 AND s.is_internal=0 AND ' . cm_billing_status_sql($pdo) . ' AND s.next_period_start<?'; $args[] = $today; }
+elseif ($f['due'] === 'soon') { $where[] = 's.billable=1 AND s.is_internal=0 AND ' . cm_billing_status_sql($pdo) . ' AND s.next_period_start<=?'; $args[] = $horizon; }
 $rows = allRows($pdo, 'SELECT s.*, c.name client_name FROM services s LEFT JOIN clients c ON c.id=s.client_id' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY (s.next_period_start IS NULL), s.next_period_start, s.domain LIMIT 400', $args);
 $tot = oneRow($pdo, "SELECT COUNT(*) n, SUM(status IN ('active','pending','suspended')) live, SUM(status IN ('active','pending','suspended') AND billable=1 AND is_internal=0) billed, SUM(check_status IS NOT NULL AND check_status NOT IN ('','agrees') AND status IN ('active','pending','suspended')) look FROM services");
 $keep = fn(array $o) => route('services', array_filter(array_merge($f, $o), fn($v) => $v !== '' && $v !== null));

@@ -15,7 +15,7 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === basename(__FILE__)) { http_response_code(404); exit; }
 
 const CM_SERVICE_KINDS = ['hosting' => 'Hosting', 'email' => 'Email', 'domain' => 'Domain', 'dns' => 'DNS & forwarding', 'maintenance' => 'Maintenance'];
-const CM_SERVICE_STATUSES = ['active' => 'Active', 'pending' => 'Pending', 'suspended' => 'Suspended', 'cancelled' => 'Cancelled', 'transferred_out' => 'Transferred away', 'expired' => 'Expired'];
+const CM_SERVICE_STATUSES = ['active' => 'Active', 'pending' => 'Pending — in development', 'suspended' => 'Suspended', 'cancelled' => 'Cancelled', 'terminated' => 'Terminated', 'transferred_out' => 'Transferred away', 'expired' => 'Expired'];
 const CM_SERVICE_LIVE = ['active', 'pending', 'suspended'];
 const CM_CYCLES = ['' => 'No cycle', '1' => 'Monthly', '3' => 'Quarterly', '6' => 'Six-monthly', '12' => 'Yearly', '24' => 'Two-yearly'];
 const CM_CHECK_STATUSES = ['' => '—', 'agrees' => 'Agrees with Xero', 'xero_ahead' => 'Xero ahead of WHMCS', 'whmcs_ahead' => 'WHMCS ahead (no Xero invoice)', 'no_invoice' => 'No invoice found', 'price_differs' => 'Price differs', 'decide' => 'Needs a decision'];
@@ -33,8 +33,26 @@ const CM_SETTINGS = [
     'xero_tax_type_overseas' => ['Xero tax type for overseas clients (ZERORATEDOUTPUT = Zero Rated)', 'ZERORATEDOUTPUT'],
     // v0.20.1: your own sending mailboxes on client accounts are not client mailboxes (not counted, not billed)
     'management_mailboxes' => ['Management mailboxes, not billed — names before the @, comma-separated (* = any characters)', 'webmailer'],
+    'dev_accounts' => ['Development cPanel accounts — usernames, comma-separated (their sites are listed on cPanel check to record as in development)', ''],
     'management_subdomains' => ['Mailboxes on a subdomain (e.g. x@mail.example.co.nz) are management, not billed (yes / no)', 'yes'],
 ];
+
+/** v0.21: does services.keep_billing exist (migration 010)? */
+function cm_has_keep_billing(PDO $pdo): bool
+{
+    static $has = null;
+    return $has ??= (bool)oneRow($pdo, "SELECT 1 x FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='services' AND COLUMN_NAME='keep_billing'");
+}
+/** SQL: the service's status allows invoicing — Active, or Suspended / Pending with "Keep billing" ticked (v0.21 policy). */
+function cm_billing_status_sql(PDO $pdo, string $a = 's'): string
+{
+    return cm_has_keep_billing($pdo) ? "($a.status='active' OR ($a.status IN ('pending','suspended') AND $a.keep_billing=1))" : "$a.status IN ('active','pending','suspended')";
+}
+/** The same test for one service row. */
+function cm_billed_by_status(array $s): bool
+{
+    return ($s['status'] ?? '') === 'active' || (in_array($s['status'] ?? '', ['pending', 'suspended'], true) && (!array_key_exists('keep_billing', $s) || !empty($s['keep_billing'])));
+}
 
 function cm_setting(PDO $pdo, string $k): string
 {
@@ -113,7 +131,7 @@ function cm_due_items(PDO $pdo, ?string $horizon = null): array
     $items = [];
     // 1. Service periods
     foreach (allRows($pdo, "SELECT s.*, c.name client_name FROM services s LEFT JOIN clients c ON c.id=s.client_id
-        WHERE s.status IN ('active','pending','suspended') AND s.billable=1 AND s.is_internal=0 AND s.price_ex_gst>0 AND s.cycle_months>0" . (cm_has_domains($pdo) ? ' AND s.included_in_service_id IS NULL' : '') . "
+        WHERE " . cm_billing_status_sql($pdo) . " AND s.billable=1 AND s.is_internal=0 AND s.price_ex_gst>0 AND s.cycle_months>0" . (cm_has_domains($pdo) ? ' AND s.included_in_service_id IS NULL' : '') . "
           AND s.next_period_start IS NOT NULL AND s.next_period_start<=? ORDER BY s.next_period_start, s.id", [$horizon]) as $s) {
         $start = (string)$s['next_period_start']; $end = cm_period_end($start, (int)$s['cycle_months']);
         if ($s['kind'] === 'hosting') $s['included_domains'] = cm_included_domains($pdo, (int)$s['id']);

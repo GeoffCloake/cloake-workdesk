@@ -17,7 +17,8 @@ $id = m7id();
 $FIELDS = ['client_id', 'kind', 'domain', 'label', 'plan_name', 'status', 'cycle_months', 'price_ex_gst', 'xero_account', 'billable', 'is_internal', 'expiry_date', 'registrar', 'cpanel_username', 'check_status', 'check_note', 'notes'];
 $DOM = cm_has_domains($pdo) ? ['nameservers', 'dns_host', 'auto_renew', 'included_in_service_id', 'provider_ref'] : [];
 $PLN = cm_has_plans($pdo) ? ['plan_id', 'mailboxes'] : [];   // v0.19
-$FIELDS = array_merge($FIELDS, $DOM, $PLN);
+$KB = cm_has_keep_billing($pdo) ? ['keep_billing'] : [];      // v0.21
+$FIELDS = array_merge($FIELDS, $DOM, $PLN, $KB);
 $plans = cm_plans($pdo);
 $pre = filter_var($_GET['client_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 $s = $id ? oneRow($pdo, 'SELECT * FROM services WHERE id=?', [$id]) : array_merge(array_fill_keys($FIELDS, null), ['client_id' => $pre, 'kind' => 'hosting', 'status' => 'active', 'billable' => 1, 'is_internal' => 0, 'cycle_months' => 6, 'next_period_start' => null]);
@@ -85,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // a new billed service with a plan and no price starts at today's list price for its cycle
             if (!$id && $new['price_ex_gst'] === null && $new['plan_id'] && $new['cycle_months']) { $lp = cm_service_list_price($new, $plans); if ($lp !== null) $new['price_ex_gst'] = number_format($lp, 2, '.', ''); }
         }
+        if ($KB) $new['keep_billing'] = !empty($_POST['keep_billing']) ? 1 : 0;
         if (!isset(CM_SERVICE_KINDS[$new['kind']])) throw new InvalidArgumentException('Choose a kind.');
         if (!isset(CM_SERVICE_STATUSES[$new['status']])) throw new InvalidArgumentException('Choose a status.');
         if (!array_key_exists((string)($new['cycle_months'] ?? ''), CM_CYCLES)) throw new InvalidArgumentException('Choose a billing cycle.');
@@ -115,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = cm_edit_error($e, $pdo, 'service #' . $id);
         if (in_array($action, ['correct_date', 'include', 'provision'], true)) { $_SESSION['cm_service_error'] = ['id' => $id, 'msg' => $error]; header('Location: ' . route('service', ['id' => $id]), true, 303); exit; }
         foreach (array_merge($FIELDS, ['next_period_start']) as $f) if (is_string($_POST[$f] ?? null)) $s[$f] = trim($_POST[$f]);
-        $s['billable'] = !empty($_POST['billable']) ? 1 : 0; $s['is_internal'] = !empty($_POST['is_internal']) ? 1 : 0;
+        $s['billable'] = !empty($_POST['billable']) ? 1 : 0; $s['is_internal'] = !empty($_POST['is_internal']) ? 1 : 0; if ($KB) $s['keep_billing'] = !empty($_POST['keep_billing']) ? 1 : 0;
     }
 }
 $ver = $id ? cm_ver(oneRow($pdo, 'SELECT * FROM services WHERE id=?', [$id]), $FIELDS) : '';
@@ -133,7 +135,8 @@ cm_page_start($id ? 'Edit service' : 'New service', 'services', ['back' => [$bac
 <?php if (!$id): ?><p class="helper">Leave the price blank to use the plan's list price for the cycle (plus mailboxes).</p><?php endif; ?><?php endif; ?>
 <div class="field"><label for="plan_name"><?=$PLN ? 'Old plan name' : 'Plan'?> <span class="opt">(for your records; not on invoices)</span></label><input id="plan_name" name="plan_name" maxlength="120" value="<?=h($s['plan_name'] ?? '')?>" placeholder="e.g. Standard - CMS with PHP 7"></div>
 <fieldset class="field group"><legend>Billing</legend>
-<div class="checks"><label class="check"><input type="checkbox" name="billable" value="1"<?=!empty($s['billable']) ? ' checked' : ''?>> Billed</label><label class="check"><input type="checkbox" name="is_internal" value="1"<?=!empty($s['is_internal']) ? ' checked' : ''?>> Internal (Cloake's own)</label></div>
+<div class="checks"><label class="check"><input type="checkbox" name="billable" value="1"<?=!empty($s['billable']) ? ' checked' : ''?>> Billed</label><label class="check"><input type="checkbox" name="is_internal" value="1"<?=!empty($s['is_internal']) ? ' checked' : ''?>> Internal (Cloake's own)</label><?php if ($KB): ?><label class="check"><input type="checkbox" name="keep_billing" value="1"<?=!empty($s['keep_billing']) ? ' checked' : ''?>> Keep billing while suspended or in development</label><?php endif; ?></div>
+<?php if ($KB): ?><p class="helper">Only Active services are invoiced; Suspended and Pending (in development) are not, unless “Keep billing” is ticked.</p><?php endif; ?>
 <div class="triple"><div><label for="price_ex_gst">Price ex GST</label><input id="price_ex_gst" name="price_ex_gst" inputmode="decimal" maxlength="14" value="<?=h($s['price_ex_gst'] ?? '')?>"></div><div><label for="cycle_months">Cycle</label><?php $sel('cycle_months', CM_CYCLES, $s['cycle_months'] ?? ''); ?></div><div><label for="xero_account">Xero account</label><input id="xero_account" name="xero_account" maxlength="20" value="<?=h($s['xero_account'] ?? '')?>" placeholder="<?=h(cm_account_for($pdo, (string)$s['kind']))?>"></div></div>
 <?php if (!$id): ?><div class="field"><label for="next_period_start">First period to invoice starts</label><input type="date" id="next_period_start" name="next_period_start" value="<?=h($s['next_period_start'] ?? '')?>"></div><?php else: ?><p class="helper">The next period (<?=h(niceDate($s['next_period_start'] ?? null))?>) moves on when an invoice is recorded. To correct it, use “Correct the next period date” on the service page.</p><?php endif; ?>
 </fieldset>
