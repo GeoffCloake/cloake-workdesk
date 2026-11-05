@@ -3,6 +3,12 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.22.3 · build 20261105.9 — 5 November 2026
+**Status: built and tested locally.** 149/149 on MariaDB 10.11 and MySQL 8.0.46. **No database change.**
+
+### Added — archive quiet clients in one go (your request)
+- **Clients › Archive quiet clients ›**: Active clients with **no live service, no open task and no open enquiry**, and nothing since the cut-off (work, tasks, enquiries, recorded invoices, WHMCS invoices) — choose 1, 2, 3 (default), 5 or 10 years. All ticked; untick any to keep; **Archive ticked clients** is one change with one Undo. Only the status changes; history stays; Xero is not touched.
+
 ## v0.22.2 · build 20261105.8 — 5 November 2026
 **Status: built and tested locally.** 148/148 on MariaDB 10.11. **No database change.**
 

@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', 'plans.php', 'plans.php?match=1', 'plans.php?edit=new', 'cpanel-check.php', 'invoices.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', 'plans.php', 'plans.php?match=1', 'plans.php?edit=new', 'cpanel-check.php', 'invoices.php', 'clients-tidy.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -579,6 +579,23 @@ function protectedChecksums() {
     await go(P, 'edit-contact.php?id=' + id); await P.selectOption('#status', 'archive'); await save(P);
     assert(one(`SELECT status FROM contacts WHERE id=${id}`) === 'archive', 'not archived');
     await go(P, 'index.php?page=clients'); assert(await P.locator(`a[href="edit-contact.php?id=${id}"]`).count() === 0, 'still listed');
+  });
+  await test('X07', 'Archive quiet clients: an Active client with only old activity (no live service, open task or enquiry) is listed and ticked; one with recent work or a live service is not; Archive ticked sets status archive in one change; Undo restores', async () => {
+    sql(`INSERT INTO clients (source_system,source_id,name,status,created_at) VALUES ('app','test-x07-old','Test X07 Quiet Ltd','active','2015-01-01'),('app','test-x07-new','Test X07 Busy Ltd','active','2015-01-01'),('app','test-x07-svc','Test X07 Hosted Ltd','active','2015-01-01')`);
+    const [q, b, h] = ['old', 'new', 'svc'].map(k => num(`SELECT id FROM clients WHERE source_id='test-x07-${k}'`));
+    sql(`INSERT INTO tasks (client_id,source_system,source_id,title,status,received_at,completed_at) VALUES (${q},'app','test-x07-t','Old job','completed','2016-02-01','2016-03-01')`);
+    sql(`INSERT INTO work_log (client_id,source_system,source_id,details,work_date,started_at,duration_seconds,billable_seconds,billability) VALUES (${b},'app','test-x07-w','Test X07',CURDATE(),NOW(),3600,0,'review')`);
+    sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,source_system,created_at) VALUES (${h},'hosting','test-x07.example.nz','active',0,0,'app','2015-01-01')`);
+    await go(P, 'index.php?page=clients'); assert(await P.locator('[data-testid=tidy-link]').count() === 1, 'no link');
+    await go(P, 'clients-tidy.php?years=3');
+    const row = id => P.locator(`[data-testid=tidy-list] [data-client="${id}"]`);
+    assert(await row(q).count() === 1 && await row(q).locator('input').isChecked() && /last activity 1 Mar 2016|last activity 01 Mar 2016|2016/.test(await row(q).innerText()), 'quiet not listed');
+    assert(await row(b).count() === 0 && await row(h).count() === 0, 'busy/hosted listed');
+    for (const x of await P.locator('[data-testid=tidy-list] input[name="sids[]"]').all()) if ((await x.getAttribute('value')) !== String(q)) await x.uncheck();
+    await save(P);
+    assert(one(`SELECT status FROM clients WHERE id=${q}`) === 'archive', 'not archived');
+    await Promise.all([P.waitForNavigation(), P.click('[data-testid=undo-bar] button')]); assert(one(`SELECT status FROM clients WHERE id=${q}`) === 'active', 'undo');
+    sql(`DELETE FROM services WHERE domain='test-x07.example.nz'`); sql(`DELETE FROM work_log WHERE source_id='test-x07-w'`); sql(`DELETE FROM tasks WHERE source_id='test-x07-t'`);
   });
   await test('X06', 'Two people editing the same client: the second save is refused, nothing is overwritten', async () => {
     const cid = S.anyClient;

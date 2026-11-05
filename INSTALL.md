@@ -1,3 +1,11 @@
+# Install v0.22.3 (build 20261105.9)
+
+Application files only; no database change. `cm-update v0.22.3` → `y`. Undo: `cm-update v0.22.2`.
+
+Then Clients › **Archive quiet clients ›**.
+
+---
+
 # Install v0.22.2 (build 20261105.8)
 
 Application files only; no database change. `cm-update v0.22.2` → `y`. Undo: `cm-update v0.22.1`.

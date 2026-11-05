@@ -1,3 +1,13 @@
+# Test report — v0.22.3 · build 20261105.9
+
+**Result: 149 of 149 tests passed** on MariaDB 10.11 and MySQL 8.0.46.
+
+| ID | Proven |
+|---|---|
+| X07 | A client whose last activity is a task completed in 2016 is listed (ticked, "last activity … 2016"); one with work today and one with a live service are not; Archive ticked → archive; Undo → active |
+
+---
+
 # Test report — v0.22.2 · build 20261105.8
 
 **Result: 148 of 148 tests passed** (MariaDB 10.11).

@@ -13,7 +13,7 @@ $rows = allRows($pdo, $sql, $args);
 $clean = fn($v) => ($v === null || $v === 'null') ? '' : trim((string)$v);
 ?>
 <?php if (($_GET['saved'] ?? null) === '1' && !cm_undo_pending()): ?><div class="success" role="status">Saved.</div><?php endif; ?>
-<p><a class="button-link" href="edit-client.php"><span aria-hidden="true">＋</span> New client</a></p>
+<p class="row-inline"><a class="button-link" href="edit-client.php"><span aria-hidden="true">＋</span> New client</a><a href="clients-tidy.php" data-testid="tidy-link">Archive quiet clients ›</a></p>
 <section class="finder-panel">
   <form class="finder" method="get" action="index.php" role="search" data-finder>
     <input type="hidden" name="page" value="clients"><input type="hidden" name="show" value="<?=h($show)?>"><?php if ($role !== ''): ?><input type="hidden" name="role" value="<?=h($role)?>"><?php endif; ?>
