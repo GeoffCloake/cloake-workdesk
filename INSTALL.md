@@ -9,7 +9,7 @@
 
 ## 2. Set up plans (10 minutes)
 1. More… › **Plans**: check the six prices (today's price for new clients). Edit any that are wrong.
-2. **Match … services without a plan**: clear matches are ticked; choose a plan for the rest (e.g. Advanced for Inland Adventures), untick any you're unsure of → **Link ticked services**. Undo is offered straight after.
+2. **Match … services without a plan**: clear matches are ticked; choose a plan for the rest (e.g. Advanced for sites with booking or e-commerce), untick any you're unsure of → **Link ticked services**. Undo is offered straight after.
 3. While Xero is connected to the Demo Company, Plans shows ✗ Not in Xero — you can try **Create ticked in Xero** there. When you connect your real organisation, do it once there.
 
 ## Undo
