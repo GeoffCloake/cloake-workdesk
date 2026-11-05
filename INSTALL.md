@@ -1,3 +1,11 @@
+# Install v0.22.2 (build 20261105.8)
+
+Application files only; no database change. `cm-update v0.22.2` → `y`. Undo: `cm-update v0.22.1`.
+
+Then Clients › Contacts without a client › open a junk one › Status: Archived › Save.
+
+---
+
 # Install v0.22.1 (build 20261105.7)
 
 **What changes:** the command-line tools only explain themselves when run with the wrong PHP. No database change; screens unchanged.

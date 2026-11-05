@@ -38,9 +38,9 @@ $clean = fn($v) => ($v === null || $v === 'null') ? '' : trim((string)$v);
   <a class="record" href="<?=h(route('client', ['id' => $r['id']]))?>"><span><strong><?=h($r['name'])?><?php if (strtolower((string)$r['status']) === 'archive'): ?> <em class="tag">Archived</em><?php endif; ?></strong><small><?=h($sub ? implode(' · ', $sub) : 'Legacy ID ' . $r['source_id'])?></small></span><span class="end"><?=(int)$r['open_tasks'] ? (int)$r['open_tasks'] . ' open' : ''?> ›</span></a>
 <?php endforeach; ?>
 </div>
-<?php $unlinked = allRows($pdo, 'SELECT id,display_name,email,phone FROM contacts WHERE client_id IS NULL ORDER BY display_name LIMIT 100');
+<?php $unlinked = allRows($pdo, "SELECT id,display_name,email,phone FROM contacts WHERE client_id IS NULL AND COALESCE(status,'')<>'archive' ORDER BY display_name LIMIT 100");   // v0.22.2: archived ones are done with
 if ($unlinked): ?>
-<details><summary>Contacts without a client (<?=count($unlinked)?>)</summary><p class="small muted">These contacts had no matching client in the old system. Open one and choose its client.</p><div class="stack compact-list">
+<details><summary>Contacts without a client (<?=count($unlinked)?>)</summary><p class="small muted">These contacts had no matching client in the old system. Open one and choose its client — or, if it's junk, set its Status to Archived.</p><div class="stack compact-list">
 <?php foreach ($unlinked as $u): ?><div class="record"><span><strong><?=h($u['display_name'] ?: 'Unnamed contact')?></strong><small><?=h(implode(' · ', array_filter([(string)$u['email'], (string)$u['phone']])))?></small></span><a class="inline-action" href="edit-contact.php?id=<?=(int)$u['id']?>">Choose client</a></div><?php endforeach; ?>
 </div></details>
 <?php endif;

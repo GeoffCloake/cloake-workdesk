@@ -572,6 +572,14 @@ function protectedChecksums() {
     assert(+one(`SELECT client_id FROM contacts WHERE id=${u[0]}`) === S.client.id, 'not linked');
     assert(one(`SELECT CRC32(CAST(legacy_record AS CHAR)) FROM contacts WHERE id=${u[0]}`) === u[1], 'legacy_record changed');
   });
+  await test('X05B', 'A junk contact with no client and no name can be archived (Edit › Status: Archived) and then drops off "Contacts without a client"', async () => {
+    sql(`INSERT INTO contacts (source_system,source_id,first_name,last_name,display_name,status) VALUES ('app','test-x05b',NULL,NULL,NULL,'active')`);
+    const id = num(`SELECT id FROM contacts WHERE source_id='test-x05b'`);
+    await go(P, 'index.php?page=clients'); await openDetails(P, 'Contacts without a client'); assert(await P.locator(`a[href="edit-contact.php?id=${id}"]`).count() === 1, 'not listed');
+    await go(P, 'edit-contact.php?id=' + id); await P.selectOption('#status', 'archive'); await save(P);
+    assert(one(`SELECT status FROM contacts WHERE id=${id}`) === 'archive', 'not archived');
+    await go(P, 'index.php?page=clients'); assert(await P.locator(`a[href="edit-contact.php?id=${id}"]`).count() === 0, 'still listed');
+  });
   await test('X06', 'Two people editing the same client: the second save is refused, nothing is overwritten', async () => {
     const cid = S.anyClient;
     const other = await newSession(375);

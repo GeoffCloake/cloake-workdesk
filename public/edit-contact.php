@@ -30,8 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($extra !== '') $types = array_merge($types, array_map('trim', explode(',', $extra)));
         $v['contact_type'] = implode(', ', array_unique(array_filter($types, 'strlen')));
         if (mb_strlen($v['contact_type']) > 255) throw new InvalidArgumentException('Contact type is too long.');
-        $clientId = cm_valid_client($pdo, $v['client_id'], true);
-        if ($v['first_name'] === '' && $v['last_name'] === '') throw new InvalidArgumentException('Enter a first or last name.');
+        // v0.22.2: a junk contact can be archived without giving it a client or a name
+        $archiving = $v['status'] === 'archive';
+        $clientId = cm_valid_client($pdo, $v['client_id'], !$archiving);
+        if (!$archiving && $v['first_name'] === '' && $v['last_name'] === '') throw new InvalidArgumentException('Enter a first or last name.');
         if ($v['email'] !== '' && !validEmail($v['email'])) throw new InvalidArgumentException('Email address does not look valid.');
         if (!in_array($v['status'], ['active', 'archive'], true)) throw new InvalidArgumentException('Invalid status.');
         if (!array_key_exists($v['contact_method'], CM_CONTACT_METHODS) && $v['contact_method'] !== ($k['contact_method'] ?? null)) throw new InvalidArgumentException('Invalid preferred contact method.');
@@ -81,7 +83,7 @@ cm_page_start($title, 'clients', ['back' => $k['client_id'] ? [route('client', [
 <?php if ($error): ?><div class="alert" role="alert"><?=h($error)?></div><?php endif; ?>
 <?php if ($id && !empty($k['legacy_record'])): ?><p class="small muted">Imported contact (original ID <?=h($k['source_id'])?>). Original imported values are kept unchanged.<?php if (!$k['client_id']): ?> <strong>This contact had no client in the old system — choose one below.</strong><?php endif; ?></p><?php endif; ?>
 <form method="post" class="form"><input type="hidden" name="id" value="<?=(int)$id?>"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><input type="hidden" name="ver" value="<?=h($ver)?>">
-<div class="field"><label for="client">Client</label><?php cm_client_picker($clients, (string)($k['client_id'] ?? ''), true); ?></div>
+<div class="field"><label for="client">Client</label><?php cm_client_picker($clients, (string)($k['client_id'] ?? ''), !$id || ($k['client_id'] ?? null) !== null); ?></div>
 <div class="pair"><?php if ($has002) $input('title', 'Title (Mr, Ms, Dr…)'); $input('first_name', 'First name'); ?></div>
 <div class="pair"><?php $input('last_name', 'Last name'); ?></div>
 <div class="pair"><?php $input('middle_name', 'Middle name'); $input('position', 'Position / role'); ?></div>

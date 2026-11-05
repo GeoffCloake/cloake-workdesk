@@ -1,3 +1,13 @@
+# Test report — v0.22.2 · build 20261105.8
+
+**Result: 148 of 148 tests passed** (MariaDB 10.11).
+
+| ID | Proven |
+|---|---|
+| X05B | A contact with no client and no name is listed under "Contacts without a client"; Status: Archived saves without a client; it is no longer listed |
+
+---
+
 # Test report — v0.22.1 · build 20261105.7
 
 **Result: 147 of 147 tests passed** (MariaDB 10.11). The only change is a PHP-version guard at the top of the three CLI tools; the suite runs migrate.php and import-whmcs.php on every reset.

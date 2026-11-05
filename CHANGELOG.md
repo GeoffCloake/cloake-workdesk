@@ -3,6 +3,12 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.22.2 · build 20261105.8 — 5 November 2026
+**Status: built and tested locally.** 148/148 on MariaDB 10.11. **No database change.**
+
+### Fixed — removing junk contacts (your question)
+- A contact with no client (and even no name) can now be **archived**: open it › Status: **Archived** › Save — no client or name needed for that. Archived contacts drop off Clients › "Contacts without a client". Nothing is deleted; Undo works.
+
 ## v0.22.1 · build 20261105.7 — 5 November 2026
 **Status: built and tested locally.** 147/147 on MariaDB 10.11. **No database change.** App screens unchanged.
 
