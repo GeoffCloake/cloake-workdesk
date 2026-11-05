@@ -94,6 +94,18 @@ switch ($path) {
         $json(200, ['Items' => [$new]]);
     case '/api/Invoices':
         if (!$bearerOk()) $json(401, ['Title' => 'Unauthorized']);
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {   // v0.22: read invoices (two seeded ones for the "match" contact, plus drafts made here)
+            $S['inv_list'] ??= [
+                ['InvoiceID' => 'eeeeeeee-0000-4000-8000-000000000001', 'InvoiceNumber' => 'CC-4001', 'Type' => 'ACCREC', 'Status' => 'AUTHORISED', 'Contact' => ['ContactID' => 'aaaaaaaa-0000-4000-8000-000000000001', 'Name' => 'Test Sync Match Limited'], 'DateString' => '2026-01-10T00:00:00', 'DueDateString' => '2026-02-01T00:00:00', 'Total' => 231.15, 'AmountPaid' => 0, 'AmountDue' => 231.15, 'Reference' => 'match.example.nz'],
+                ['InvoiceID' => 'eeeeeeee-0000-4000-8000-000000000002', 'InvoiceNumber' => 'INV-4002', 'Type' => 'ACCREC', 'Status' => 'PAID', 'Contact' => ['ContactID' => 'aaaaaaaa-0000-4000-8000-000000000001', 'Name' => 'Test Sync Match Limited'], 'Date' => '/Date(1767225600000+0000)/', 'DueDate' => '/Date(1767225600000+0000)/', 'Total' => 57.44, 'AmountPaid' => 57.44, 'AmountDue' => 0],
+                ['InvoiceID' => 'eeeeeeee-0000-4000-8000-000000000003', 'InvoiceNumber' => 'INV-4003', 'Type' => 'ACCREC', 'Status' => 'AUTHORISED', 'Contact' => ['ContactID' => 'aaaaaaaa-0000-4000-8000-000000000002', 'Name' => 'Test Xero Only Person'], 'DateString' => '2099-01-01T00:00:00', 'DueDateString' => '2099-02-01T00:00:00', 'Total' => 100, 'AmountPaid' => 40, 'AmountDue' => 60],
+            ];
+            $save();
+            $st = array_filter(explode(',', (string)($_GET['Statuses'] ?? '')));
+            $list = array_values(array_filter($S['inv_list'], fn($i) => (!$st || in_array($i['Status'], $st, true)) && (empty($_GET['ContactIDs']) || $i['Contact']['ContactID'] === $_GET['ContactIDs'])));
+            $page = (int)($_GET['page'] ?? 1);
+            $json(200, ['Invoices' => array_slice($list, ($page - 1) * 100, 100)]);
+        }
         $in = json_decode($body, true)['Invoices'][0] ?? [];
         if (($in['Status'] ?? '') !== 'DRAFT' || ($in['Type'] ?? '') !== 'ACCREC') $json(400, ['Message' => 'mock only accepts DRAFT ACCREC']);
         if (($in['Contact']['Name'] ?? '') === 'Test Xero Fail') $json(400, ['Elements' => [['ValidationErrors' => [['Message' => 'Account code \'99999\' is not a valid code']]]]]);

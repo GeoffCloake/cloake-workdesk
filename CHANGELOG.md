@@ -3,6 +3,14 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.22.0 · build 20261105.6 — 5 November 2026
+**Status: built and tested locally (Xero calls against the local stand-in).** 147/147 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **No database change.** `cm-update v0.21.0` goes back.
+
+### Added — all invoices (your request: "do both")
+- **More… › Invoices — live from Xero, read-only:** everything awaiting payment, overdue first, with totals (awaiting / overdue), each linked to its Workdesk client; an Overdue filter; each number opens the invoice in Xero. Nothing is stored or sent to Xero.
+- **A client's Xero invoices:** client page › Invoices › **In Xero ›** (all statuses, newest first) once the client is linked to its Xero contact.
+- **WHMCS invoice history (import batch 2):** the WHMCS invoices export goes into the read-only archive and each client page lists them under Invoices › WHMCS invoices (number, date, total incl GST, status, date paid). A later batch needs no client map — it uses the clients matched in batch 1; the dry run says how many rows link to a client. Undo by batch as before.
+
 ## v0.21.0 · build 20261105.5 — 5 November 2026
 **Status: built and tested locally.** 145/145 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **Database migration 010** (add-only: one column, services.keep_billing). `cm-update v0.20.1` goes back.
 

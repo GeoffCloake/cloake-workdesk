@@ -12,7 +12,8 @@ declare(strict_types=1);
  *   clients.csv services.csv domains.csv  — archived row for row (archive_whmcs)
  *   client-map.csv items.csv xero-history.csv — which live items become services, for which client, from which period
  * Any OTHER .csv in the folder (later: invoices, invoiceitems, transactions, products …) is archived as-is, one row
- * per line, keyed by its ID column — so the WHMCS history can be added later as a separate batch.
+ * per line, keyed by its ID column — so the WHMCS history can be added later as a separate batch. (v0.22) Such a batch
+ * needs no client-map.csv: rows are linked to the clients matched in the earlier batch (by WHMCS client ID).
  * Passwords: a Password/card/bank column is dropped on read even if present; note lines that look like logins are
  * removed. Rows already archived (same table + ID) and services already imported are skipped, never overwritten.
  */
@@ -142,6 +143,8 @@ try {
             $clientOf[$w] = (int)$id;
         } elseif (in_array($r['action'], ['map', 'internal'], true)) $clientOf[$w] = (int)$r['manager_client_id'];
     }
+    // v0.22: a later batch (e.g. invoices only) has no client-map.csv — use the clients matched in earlier batches
+    foreach ($pdo->query("SELECT source_id, client_id FROM archive_whmcs WHERE source_table='clients' AND client_id IS NOT NULL") as $r) $clientOf[(string)$r['source_id']] ??= (int)$r['client_id'];
     // 2. Archive every row of every export
     $arch = ['new' => 0, 'skipped' => 0]; $byTable = [];
     $ins = $pdo->prepare('INSERT INTO archive_whmcs (source_table,source_id,whmcs_client_id,client_id,domain,status,source_record,removed,row_sha256,import_batch_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
@@ -166,10 +169,10 @@ try {
             $json = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
             $remTxt = trim(implode(', ', array_keys($rem['columns'])) . ($rem['lines'] ? ($rem['columns'] ? '; ' : '') . $rem['lines'] . ' note line(s)' : ''));
             if ($cmd === 'apply') $ins->execute([$table, $sid, $wc ?: null, ($clientOf[$wc] ?? 0) > 0 ? $clientOf[$wc] : null, $row['Domain Name'] ?? $row['Domain'] ?? null, $row['Status'] ?? null, $json, $remTxt ?: null, hash('sha256', $json), $batch]);
-            $arch['new']++; $byTable[$table]++;
+            $arch['new']++; $byTable[$table]++; if (($clientOf[$wc] ?? 0) > 0) $arch['linked'] = ($arch['linked'] ?? 0) + 1;
         }
     }
-    $say('Archive: ' . $arch['new'] . ' rows (' . implode(', ', array_map(fn($t, $n) => "$t $n", array_keys($byTable), $byTable)) . ')' . ($arch['skipped'] ? '; ' . $arch['skipped'] . ' already archived, skipped' : ''));
+    $say('Archive: ' . $arch['new'] . ' rows (' . implode(', ', array_map(fn($t, $n) => "$t $n", array_keys($byTable), $byTable)) . ')' . ($arch['skipped'] ? '; ' . $arch['skipped'] . ' already archived, skipped' : '') . '; ' . (int)($arch['linked'] ?? 0) . ' linked to a Workdesk client');
     $say('Removed on read: ' . ($removed['columns'] ? 'columns ' . implode(', ', array_keys($removed['columns'])) : 'no columns') . '; ' . $removed['lines'] . ' note line(s) that looked like logins');
     // 3. Services from items.csv
     $svcNew = 0; $svcSkip = 0; $svcIds = []; $kinds = [];

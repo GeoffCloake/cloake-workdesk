@@ -1,3 +1,17 @@
+# Test report — v0.22.0 · build 20261105.6
+
+**Result: 147 of 147 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. No database change. Xero calls run against the local stand-in, which now also answers invoice reads.
+
+| ID | Proven |
+|---|---|
+| XI01 | Invoices: awaiting payment 2 · $291.15, overdue 1 · $231.15; the overdue CC-4001 is first and shows the linked client; Overdue filter shows 1; ?client= lists CC-4001 and the paid INV-4002 (a Xero /Date() date read correctly) and not another contact's invoice; client page has the "In Xero" link; no write calls to Xero |
+| AR01 | An invoices export with WHMCS's title row and no client map: dry run changes nothing and counts 2; apply archives both linked to the client matched in batch 1, a login-like note line removed; the client page lists them with total, status and date paid; undo of the batch removes them |
+| Layout | Invoices passes the 320/375/390/430/1280 px checks |
+
+The real WHMCS invoices file (2,989 invoices) was dry-run against test data: read cleanly, nothing removed.
+
+---
+
 # Test report — v0.21.0 · build 20261105.5
 
 **Result: 145 of 145 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. Migration 010 applied by the runner on both.

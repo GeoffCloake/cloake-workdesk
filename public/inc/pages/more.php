@@ -15,6 +15,7 @@ $groups = [
     ],
     'Billing' => [
         [route('invoicing'), 'Pending Invoicing', 'Renewals, milestones, claims and tasks to invoice in Xero'],
+        ['invoices.php', 'Invoices', 'Live from Xero: awaiting payment and overdue; each client\'s invoices'],
         [route('services'), 'Services', 'Hosting, domains and email — what each client has and when it renews'],
         ['plans.php', 'Plans', 'Hosting, email and domain plans: today\'s prices, legacy prices, Xero items'],
         ['cpanel-check.php', 'cPanel check', 'Mailboxes, forwards, package and disk from the server; counts to update'],

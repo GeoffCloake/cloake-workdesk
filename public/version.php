@@ -1,5 +1,5 @@
 <?php
 declare(strict_types=1);
 // Single source of truth for the visible application release.
-const CLOAKE_VERSION = '0.21.0';
-const CLOAKE_BUILD = '20261105.5';
+const CLOAKE_VERSION = '0.22.0';
+const CLOAKE_BUILD = '20261105.6';

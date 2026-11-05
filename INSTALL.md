@@ -1,3 +1,30 @@
+# Install v0.22.0 (build 20261105.6) — and how to undo it
+
+**What changes:** application files only. **No database change.**
+
+## 1. Install
+1. `su -s /bin/bash - cloakecrea`
+2. `cm-update v0.22.0` → `y` → `Verified: … v0.22.0 · build 20261105.6`.
+3. More… › **Invoices** (needs Xero connected — with the Demo Company you'll see its test invoices).
+
+## 2. WHMCS invoice history (import batch 2, ~2 minutes)
+1. Upload `whmcs-batch2-invoices-2026-11-05-CONFIDENTIAL.zip` with File Manager, then (as cloakecrea):
+   ```
+   find ~/public_html ~ -maxdepth 2 -name 'whmcs-batch2-invoices-*.zip' -exec mv {} ~/cloake-manager/private/ \;
+   cd ~/cloake-manager/private && unzip -o whmcs-batch2-invoices-2026-11-05-CONFIDENTIAL.zip && cd ~
+   php ~/cloake-manager/releases/cloake-workdesk-v0.22.0-build20261105.6/deploy/import-whmcs.php dry-run --dir ~/cloake-manager/private/whmcs-batch2
+   ```
+   Expect `Archive: 2989 rows (invoices 2989); … linked to a Workdesk client`.
+2. `php ~/cloake-manager/releases/cloake-workdesk-v0.22.0-build20261105.6/deploy/import-whmcs.php apply --dir ~/cloake-manager/private/whmcs-batch2 --by "Geoff"`
+3. Open a client: Invoices › WHMCS invoices.
+4. Delete the uploaded copies: `rm -r ~/cloake-manager/private/whmcs-batch2 ~/cloake-manager/private/whmcs-batch2-invoices-*.zip`
+
+Undo the history import: `php …/deploy/import-whmcs.php undo --batch <n> --confirm` (the number the apply printed).
+
+**Undo the app:** `cm-update v0.21.0`.
+
+---
+
 # Install v0.21.0 (build 20261105.5) — and how to undo it
 
 **What changes:** application files and **database migration 010** (add-only: services.keep_billing). From now on **only Active services are invoiced** — Suspended and Pending (in development) are not, unless "Keep billing" is ticked on the service.

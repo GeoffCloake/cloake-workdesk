@@ -275,3 +275,36 @@ function cm_client_tax_type(PDO $pdo, array $c): string
 {
     return cm_client_overseas($c) !== '' ? (cm_setting($pdo, 'xero_tax_type_overseas') ?: 'ZERORATEDOUTPUT') : (cm_setting($pdo, 'xero_tax_type') ?: 'OUTPUT2');
 }
+
+/* ---------------- v0.22: read invoices from Xero (read-only) ---------------- */
+
+/** Xero's date ("/Date(1762300800000+0000)/" or ISO) as Y-m-d. */
+function cm_xero_date($v): string
+{
+    $v = (string)$v;
+    if (preg_match('~/Date\((-?\d+)~', $v, $m)) return gmdate('Y-m-d', intdiv((int)$m[1], 1000));
+    return substr($v, 0, 10);
+}
+
+/**
+ * Sales invoices from Xero, newest first. $statuses e.g. ['AUTHORISED'] (awaiting payment), ['PAID'], [] = all except deleted/voided.
+ * $contactId limits to one contact. At most $maxPages × 100 invoices. Each: id, number, contact_id, contact, date, due, total, paid, due_amount, status, reference, url.
+ */
+function cm_xero_invoices(array &$x, array $statuses = [], string $contactId = '', int $maxPages = 10): array
+{
+    $q = ['where' => 'Type=="ACCREC"', 'order' => 'Date DESC', 'summaryOnly' => 'true'];
+    $q['Statuses'] = implode(',', $statuses ?: ['DRAFT', 'SUBMITTED', 'AUTHORISED', 'PAID']);
+    if ($contactId !== '') $q['ContactIDs'] = $contactId;
+    $out = [];
+    for ($page = 1; $page <= $maxPages; $page++) {
+        [$st, $j] = cm_xero_api($x, 'GET', '/Invoices?' . http_build_query($q + ['page' => $page]));
+        if ($st !== 200) throw new RuntimeException('Could not read invoices from Xero (' . $st . ').');
+        $batch = $j['Invoices'] ?? [];
+        foreach ($batch as $i) $out[] = ['id' => (string)($i['InvoiceID'] ?? ''), 'number' => (string)($i['InvoiceNumber'] ?? ''), 'contact_id' => strtolower((string)($i['Contact']['ContactID'] ?? '')), 'contact' => (string)($i['Contact']['Name'] ?? ''),
+            'date' => cm_xero_date($i['DateString'] ?? $i['Date'] ?? ''), 'due' => cm_xero_date($i['DueDateString'] ?? $i['DueDate'] ?? ''), 'total' => (float)($i['Total'] ?? 0), 'paid' => (float)($i['AmountPaid'] ?? 0),
+            'due_amount' => (float)($i['AmountDue'] ?? 0), 'status' => (string)($i['Status'] ?? ''), 'reference' => (string)($i['Reference'] ?? ''),
+            'url' => 'https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=' . rawurlencode((string)($i['InvoiceID'] ?? ''))];
+        if (count($batch) < 100) break;
+    }
+    return $out;
+}

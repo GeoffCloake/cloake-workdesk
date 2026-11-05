@@ -169,7 +169,7 @@ function protectedChecksums() {
     'edit-client.php?id=' + S.client.id, 'edit-client.php', 'edit-contact.php?client_id=' + S.client.id, 'edit-contact.php?id=' + S.contactId,
     'edit-task.php?id=' + S.fabrikTask, 'edit-task.php?client_id=' + S.client.id, 'edit-work.php?id=4096', 'edit-work.php?id=' + S.fabrikWork,
     'index.php?page=tasks&status=all&sort=queue&priority=immediate', 'index.php?page=work&staff=geoff&from=2020-01-01', 'index.php?page=clients&role=accounts',
-    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', 'plans.php', 'plans.php?match=1', 'plans.php?edit=new', 'cpanel-check.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
+    'index.php?page=templates', 'edit-template.php', 'index.php?page=workload', 'staff.php', 'schedule.php?id=' + S.openTask.id, 'index.php?page=services', 'index.php?page=domains', 'service-edit.php', 'claims.php', 'billing-settings.php', 'xero.php', 'xero-sync.php', 'plans.php', 'plans.php?match=1', 'plans.php?edit=new', 'cpanel-check.php', 'invoices.php', ...(() => { const t = sql(`SELECT b.template_id,b.id FROM breakdown_items b WHERE b.template_id IS NOT NULL ORDER BY b.id LIMIT 1`)[0]; return t ? ['edit-template.php?id=' + t[0], `pricing.php?owner_type=template&owner_id=${t[0]}&line=${t[1]}`] : []; })()];
   for (const w of [...PHONES, DESKTOP]) {
     await test('L' + w, `Every screen at ${w}px: loads, no sideways scroll, no CSP/JS errors, navigation usable, content clear of nav`, async () => {
       const { ctx, page } = await newSession(w);
@@ -1464,6 +1464,20 @@ function protectedChecksums() {
     assert(after > before && (await P.locator('main').innerText()).includes('kowhaiphysio.example.nz'), `before ${before} after ${after}`);
     await go(P, 'billing-settings.php'); await P.fill('#lead_weeks', '8'); await P.fill('#updated_by', 'Geoff'); await save(P);
   });
+  await test('AR01', 'WHMCS history batch 2: an invoices export (with WHMCS\'s title row, no client map) — dry run changes nothing; apply archives every invoice linked to the client matched in batch 1; the client page lists them (read-only); undo of the batch removes them', async () => {
+    const [wc, cl] = sql(`SELECT source_id, client_id FROM archive_whmcs WHERE source_table='clients' AND client_id IS NOT NULL ORDER BY id LIMIT 1`)[0];
+    const dir = path.join(OUT, 'whmcs-batch2'); fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'invoices.csv'), `Invoices\nID,User ID,Client Name,Invoice Number,Creation Date,Due Date,Date Paid,Total,Status,Payment Method,Notes\n9101,${wc},Fixture,,2025-03-01,2025-04-20,2025-04-02 10:00:00,231.15,Paid,Bank Transfer,\n9102,${wc},Fixture,,2026-03-01,2026-04-20,0000-00-00 00:00:00,57.44,Unpaid,Bank Transfer,login: bob password: x1\n`);
+    const before = num(`SELECT COUNT(*) FROM archive_whmcs`);
+    const d = php('dry-run', '--dir', dir); assert(d.ok && /invoices 2/.test(d.out) && num(`SELECT COUNT(*) FROM archive_whmcs`) === before, 'dry run ' + d.out.slice(0, 300));
+    const a = php('apply', '--dir', dir, '--by', 'Test AR01'); assert(a.ok, a.out.slice(0, 300));
+    const rows = sql(`SELECT source_id, client_id, source_record FROM archive_whmcs WHERE source_table='invoices' ORDER BY source_id`);
+    assert(rows.length === 2 && rows.every(r => r[1] === cl) && !/password|bob/.test(rows[1][2]), 'archived ' + JSON.stringify(rows));
+    await go(P, 'index.php?page=client&id=' + cl); await openDetails(P, 'WHMCS invoices');
+    const t = await P.locator('[data-testid=whmcs-invoices]').innerText();
+    assert(t.includes('9102') && t.includes('$57.44 incl GST') && t.includes('Unpaid') && /paid 2 Apr 2025|paid 02 Apr 2025|paid .*2025/.test(t), 'client page ' + t);
+    const batch = (/batch (\d+)/.exec(a.out) || [])[1]; const u = php('undo', '--batch', batch, '--confirm'); assert(u.ok && num(`SELECT COUNT(*) FROM archive_whmcs WHERE source_table='invoices'`) === 0, 'undo ' + u.out);
+  });
   await test('R11', 'Import undo: refused while an invoice recorded in the manager uses its services; allowed after that invoice is undone; removes services, archive, history and the new client', async () => {
     const s7 = sql(`SELECT id,next_period_start FROM services WHERE source_id='S7'`)[0];
     await go(P, 'index.php?page=invoicing'); const card = P.locator('[data-testid=invoice-client]', { hasText: 'newclient.example.nz' });
@@ -1895,6 +1909,21 @@ function protectedChecksums() {
       await draftFor('test-px02b.example.nz');
       const inv2 = JSON.parse(mlog().filter(r => r.p === '/api/Invoices').pop().b).Invoices[0];
       assert(!('ItemCode' in inv2.LineItems[0]), 'item code without a plan');
+    });
+    await test('XI01', 'Invoices (live from Xero, read-only): awaiting payment with overdue first and totals; a linked contact shows the Workdesk client; ?client= lists that client\'s invoices of every status (Xero /Date() dates read); client page links to them; nothing is sent to Xero but reads', async () => {
+      const cl = +one(`SELECT id FROM clients WHERE LOWER(COALESCE(status,''))<>'archive' AND (xero_contact_id IS NULL OR xero_contact_id='' OR xero_contact_id='null') ORDER BY id LIMIT 1`);
+      sql(`UPDATE clients SET xero_contact_id=NULL WHERE xero_contact_id='aaaaaaaa-0000-4000-8000-000000000001'`); sql(`UPDATE clients SET xero_contact_id='aaaaaaaa-0000-4000-8000-000000000001' WHERE id=${cl}`);
+      const posts = mlog().filter(r => r.m !== 'GET' && r.p.startsWith('/api/')).length;
+      await go(P, 'index.php?page=more'); assert(await P.locator('.more-list a[href="invoices.php"]').count() === 1, 'not on More');
+      await go(P, 'invoices.php');
+      assert(/2 · \$291\.15/.test(await P.locator('[data-testid=inv-summary]').innerText()) && /1 · \$231\.15/.test(await P.locator('[data-testid=inv-summary]').innerText()), 'totals ' + await P.locator('[data-testid=inv-summary]').innerText());
+      const first = P.locator('[data-testid=inv-list] li').first(); assert((await first.getAttribute('data-invoice')) === 'CC-4001' && /overdue/.test(await first.innerText()) && (await first.innerText()).includes(one(`SELECT name FROM clients WHERE id=${cl}`)), 'first row');
+      await go(P, 'invoices.php?show=overdue'); assert(await P.locator('[data-testid=inv-list] li').count() === 1, 'overdue filter');
+      await go(P, 'invoices.php?client=' + cl); const t = await P.locator('[data-testid=inv-list]').innerText();
+      assert(t.includes('CC-4001') && t.includes('INV-4002') && /1 Jan 2026|01 Jan 2026|Jan 2026/.test(t) && t.includes('paid') && !t.includes('INV-4003'), 'client list ' + t);
+      await go(P, 'index.php?page=client&id=' + cl); assert(await P.locator('[data-testid=client-xero-invoices]').count() === 1, 'client page link');
+      assert(mlog().filter(r => r.m !== 'GET' && r.p.startsWith('/api/')).length === posts, 'something sent to Xero');
+      sql(`UPDATE clients SET xero_contact_id=NULL WHERE id=${cl}`);
     });
     await test('XS05', 'A connection made before v0.18 (without the contacts/settings permissions) is asked to reconnect; creating contacts is refused until then', async () => {
       const j = JSON.parse(fs.readFileSync(XJ, 'utf8')); const keep = j.scope; j.scope = 'offline_access accounting.invoices accounting.contacts.read'; fs.writeFileSync(XJ, JSON.stringify(j));
