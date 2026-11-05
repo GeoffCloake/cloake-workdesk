@@ -3,6 +3,12 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.22.1 · build 20261105.7 — 5 November 2026
+**Status: built and tested locally.** 147/147 on MariaDB 10.11. **No database change.** App screens unchanged.
+
+### Fixed
+- The command-line tools (WHMCS import, migrations, email inventory) now stop with a clear message when run with PHP 7 — the server's plain `php` — and show the command with the website's PHP (`/opt/cpanel/ea-php83/root/usr/bin/php …`), instead of stopping silently.
+
 ## v0.22.0 · build 20261105.6 — 5 November 2026
 **Status: built and tested locally (Xero calls against the local stand-in).** 147/147 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data). **No database change.** `cm-update v0.21.0` goes back.
 

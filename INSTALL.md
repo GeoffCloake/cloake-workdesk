@@ -1,3 +1,13 @@
+# Install v0.22.1 (build 20261105.7)
+
+**What changes:** the command-line tools only explain themselves when run with the wrong PHP. No database change; screens unchanged.
+
+`su -s /bin/bash - cloakecrea` → `cm-update v0.22.1` → `y`. Undo: `cm-update v0.22.0`.
+
+When running a tool by hand, use the website's PHP: `/opt/cpanel/ea-php83/root/usr/bin/php ~/cloake-manager/releases/<release>/deploy/<tool>.php …`
+
+---
+
 # Install v0.22.0 (build 20261105.6) — and how to undo it
 
 **What changes:** application files only. **No database change.**

@@ -18,6 +18,7 @@ declare(strict_types=1);
  * removed. Rows already archived (same table + ID) and services already imported are skipped, never overwritten.
  */
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+if (PHP_VERSION_ID < 80000) { fwrite(STDERR, 'This needs PHP 8 (this is PHP ' . PHP_VERSION . "). Run it with the website's PHP:\n  /opt/cpanel/ea-php83/root/usr/bin/php " . implode(' ', $argv) . "\n"); exit(2); }   // v0.22.1: plain `php` on the server is PHP 7
 $cmd = $argv[1] ?? 'status';
 $opt = function (string $name) use ($argv): ?string { $i = array_search('--' . $name, $argv, true); return $i !== false ? ($argv[$i + 1] ?? '') : null; };
 $cfgFile = getenv('CM_CONFIG') ?: '/home/cloakecrea/cloake-manager/private/config.php';

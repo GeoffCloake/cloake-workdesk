@@ -17,6 +17,7 @@ declare(strict_types=1);
  * NOT need a database rollback: the added columns are ignored by older versions.
  */
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+if (PHP_VERSION_ID < 80000) { fwrite(STDERR, 'This needs PHP 8 (this is PHP ' . PHP_VERSION . "). Run it with the website's PHP:\n  /opt/cpanel/ea-php83/root/usr/bin/php " . implode(' ', $argv) . "\n"); exit(2); }   // v0.22.1: plain `php` on the server is PHP 7
 if (PHP_VERSION_ID < 80000) { fwrite(STDERR, "PHP 8.0+ required (this is " . PHP_VERSION . ").\n"); exit(2); }
 
 $cmd = $argv[1] ?? 'status';

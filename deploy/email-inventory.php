@@ -16,6 +16,7 @@ declare(strict_types=1);
  * Test hooks (not used on the server): CM_UAPI (uapi binary), CM_WHMAPI (whmapi1 binary), CM_USERS_DIR (folder with one file per cPanel user),
  * CM_EMAIL_OUT (output file), CM_OWNER (owner of the output file).
  */
+if (PHP_VERSION_ID < 80000) { fwrite(STDERR, 'The email inventory needs PHP 8 (this is PHP ' . PHP_VERSION . ").\n"); exit(2); }
 $uapi = getenv('CM_UAPI') ?: '/usr/local/cpanel/bin/uapi';
 $whmapi = getenv('CM_WHMAPI') ?: '/usr/local/cpanel/bin/whmapi1';
 $usersDir = getenv('CM_USERS_DIR') ?: '/var/cpanel/users';

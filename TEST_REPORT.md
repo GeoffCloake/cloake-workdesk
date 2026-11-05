@@ -1,3 +1,9 @@
+# Test report — v0.22.1 · build 20261105.7
+
+**Result: 147 of 147 tests passed** (MariaDB 10.11). The only change is a PHP-version guard at the top of the three CLI tools; the suite runs migrate.php and import-whmcs.php on every reset.
+
+---
+
 # Test report — v0.22.0 · build 20261105.6
 
 **Result: 147 of 147 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. No database change. Xero calls run against the local stand-in, which now also answers invoice reads.
