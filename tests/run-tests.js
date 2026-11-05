@@ -1286,19 +1286,20 @@ function protectedChecksums() {
     await go(P, 'cpanel-check.php'); assert(await P.locator('[data-testid=cpanel-missing]').count() === 1, 'no-file notice');
     const users = path.join(OUT, 'cpusers'); fs.mkdirSync(users, { recursive: true }); for (const u of ['testacct1', 'testacct2', 'root']) fs.writeFileSync(path.join(users, u), '');
     const r = execFileSync('php', [path.join(__dirname, '../deploy/email-inventory.php')], { encoding: 'utf8', env: { ...process.env, CM_UAPI: path.join(__dirname, 'fixture/fake-uapi.sh'), CM_WHMAPI: path.join(__dirname, 'fixture/fake-whmapi1.sh'), CM_USERS_DIR: users, CM_EMAIL_OUT: INV } });
-    assert(/2 accounts, 3 mailboxes, 1 forwarders/.test(r), r);
+    assert(/2 accounts, 5 mailboxes, 1 forwarders/.test(r), r);
     const j = JSON.parse(fs.readFileSync(INV, 'utf8')); const a = j.accounts.testacct1;
     assert((fs.statSync(INV).mode & 0o777) === 0o600 && !('root' in j.accounts), 'mode/root');
-    assert(a.mailboxes.join() === 'info@test-c01.example.nz,sales@test-c01.example.nz,shop@test-c01-addon.example.nz' && a.forwarders[0].to === 'someone@gmail.example' && a.package === 'cloakecr_Standard' && a.disk_used === '512M' && j.accounts.testacct2.suspended === true, JSON.stringify(j));
+    assert(a.mailboxes.join() === 'forms@mail.test-c01.example.nz,info@test-c01.example.nz,sales@test-c01.example.nz,shop@test-c01-addon.example.nz,webmailer@test-c01.example.nz' && a.forwarders[0].to === 'someone@gmail.example' && a.package === 'cloakecr_Standard' && a.disk_used === '512M' && j.accounts.testacct2.suspended === true, JSON.stringify(j));
     assert(!/pass/i.test(fs.readFileSync(INV, 'utf8')), 'password field');
   });
-  await test('C02', 'Service page shows the server\'s mailboxes and forwards (package, disk); cPanel check lists the count to update, accounts with no service, suspended; Update sets mailboxes only (prices unchanged); Undo restores; with 3 mailboxes the Xero line says "Includes 3 mailboxes"', async () => {
+  await test('C02', 'Service page shows the server\'s mailboxes and forwards (package, disk); management mailboxes (webmailer@, any on a subdomain) listed but not counted; cPanel check lists the count to update, accounts with no service, suspended; Update sets mailboxes only (prices unchanged); Undo restores; with 3 mailboxes the Xero line says "Includes 3 mailboxes"', async () => {
     sql(`INSERT INTO services (client_id,kind,domain,status,billable,is_internal,price_ex_gst,cycle_months,next_period_start,cpanel_username,mailboxes,source_system,created_at) VALUES (${S.client.id},'hosting','test-c01.example.nz','active',1,0,201,6,'${todayNZ}','testacct1',1,'app',NOW())`);
     const sid = num(`SELECT id FROM services WHERE domain='test-c01.example.nz'`);
     await go(P, 'index.php?page=service&id=' + sid);
     const t = await P.locator('[data-testid=cpanel-panel]').innerText();
     assert(t.includes('sales@test-c01.example.nz') && t.includes('hello@test-c01.example.nz → someone@gmail.example') && t.includes('package cloakecr_Standard') && t.includes('512 MB of 2,000 MB'), 'panel ' + t);
-    assert(/3 mailboxes · 1 forward/.test(t) && await P.locator('[data-testid=cpanel-mismatch]').count() === 1, 'counts');
+    assert(/3 mailboxes · 1 forward · 2 management/.test(t) && await P.locator('[data-testid=cpanel-mismatch]').count() === 1, 'counts ' + t);
+    assert(/webmailer@test-c01\.example\.nz\s*management — not billed/.test(t) && /forms@mail\.test-c01\.example\.nz\s*management — not billed/.test(t), 'management mailboxes ' + t);
     await go(P, 'cpanel-check.php');
     assert(await P.locator(`[data-testid=cpanel-diff] [data-service="${sid}"]`).count() === 1 && /testacct2/.test(await P.locator('[data-testid=cpanel-orphans]').textContent()), 'check page');
     const price = one(`SELECT price_ex_gst FROM services WHERE id=${sid}`);

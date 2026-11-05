@@ -49,6 +49,23 @@ function cm_account_forwarders(array $s, array $a): array
     return ($a['domains'][0] ?? '') === $dom ? $all : array_values(array_filter($all, fn($f) => $dom !== '' && str_ends_with((string)$f['from'], '@' . $dom)));
 }
 
+/** Your own sending/management mailbox (Billing settings): by name before the @, or on a subdomain of one of the account's domains. */
+function cm_is_management_mailbox(PDO $pdo, string $email, array $accountDomains): bool
+{
+    [$local, $dom] = array_pad(explode('@', strtolower($email), 2), 2, '');
+    foreach (array_filter(array_map('trim', explode(',', cm_setting($pdo, 'management_mailboxes')))) as $pat)
+        if (preg_match('/^' . str_replace('\\*', '.*', preg_quote($pat, '/')) . '$/', $local)) return true;
+    if (cm_setting($pdo, 'management_subdomains') !== 'no') foreach ($accountDomains as $d) if ($dom !== $d && str_ends_with($dom, '.' . $d)) return true;
+    return false;
+}
+/** Client mailboxes (counted and billed) and management ones, for this service. */
+function cm_service_mailboxes(PDO $pdo, array $s, array $a): array
+{
+    $client = []; $mgmt = [];
+    foreach (cm_account_mailboxes($s, $a) as $m) { if (cm_is_management_mailbox($pdo, $m, (array)($a['domains'] ?? []))) $mgmt[] = $m; else $client[] = $m; }
+    return ['client' => $client, 'management' => $mgmt];
+}
+
 /** Disk in MB as "120 MB of 2,000 MB" (cPanel reports e.g. "120M" and "unlimited"). */
 function cm_disk_text(array $a): string
 {

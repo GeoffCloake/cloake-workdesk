@@ -3,6 +3,16 @@
 Versions are shown on every screen (header) and on the sign-in page as `v<version> · build <build>`.
 Status words used below: **built** (code exists) · **tested locally** (automated tests passed here) · **deployed** (installed on manager-dev) · **user-confirmed** (you have checked it on the server).
 
+## v0.20.1 · build 20261105.4 — 5 November 2026
+**Status: built and tested locally.** 141/141 on MariaDB 10.11 and MySQL 8.0.46. **No database change.** `cm-update v0.20.0` goes back.
+
+### Changed — management mailboxes aren't client mailboxes (your note)
+- **Billing settings › Management mailboxes:** names before the @ that are yours (default `webmailer`; comma-separated, `*` = any characters, e.g. `webmailer, noreply, forms*`), and **mailboxes on a subdomain** (e.g. forms@mail.example.co.nz) count as management too (yes / no, default yes).
+- They are still listed on the service page, marked **management — not billed**, but left out of the mailbox counts everywhere: client page, cPanel check, the "recorded here" flag and so the Xero line.
+
+### Fixed — the install question
+- `cm-update` reads the answer from the keyboard (not from anything piped in), ignores spaces and capitals, and accepts `y` or `yes`; `cm-update vX.Y.Z --yes` installs without asking. **Refresh your copy once** (see INSTALL.md).
+
 ## v0.20.0 · build 20261105.3 — 5 November 2026
 **Status: built and tested locally.** 141/141 on MariaDB 10.11 and MySQL 8.0.46 (synthetic data; uapi and whmapi1 played by stand-ins). **No database change.** `cm-update v0.19.0` goes back.
 

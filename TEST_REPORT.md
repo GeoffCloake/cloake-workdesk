@@ -1,3 +1,15 @@
+# Test report — v0.20.1 · build 20261105.4
+
+**Result: 141 of 141 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. No database change.
+
+| ID | Proven (changed) |
+|---|---|
+| C01 | The stand-in account now also has webmailer@ and forms@mail.… — the file lists all five mailboxes as cPanel reports them |
+| C02 | Service page: "3 mailboxes · 1 forward · 2 management", with webmailer@ and the subdomain mailbox shown as "management — not billed"; cPanel check, client page ("3 mbx") and the Xero line count 3 |
+| cm-update | Rehearsed: a piped "y" no longer answers the question; `--yes` installs; no keyboard → stops with the --yes hint |
+
+---
+
 # Test report — v0.20.0 · build 20261105.3
 
 **Result: 141 of 141 tests passed** on synthetic data on MariaDB 10.11 and MySQL 8.0.46. No database change. The root installer was rehearsed: copied to /usr/local/sbin/cm-email-inventory (root, 700), nightly job in /etc/cron.d (02:17), run once, and `--remove` takes both away.

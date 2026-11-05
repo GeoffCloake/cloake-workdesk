@@ -31,6 +31,9 @@ const CM_SETTINGS = [
     'material_markup_pct' => ['Materials markup % on cost (blank = sell at cost)', ''],
     'xero_tax_type' => ['Xero tax type on draft invoice lines (OUTPUT2 = 15% GST on Income)', 'OUTPUT2'],
     'xero_tax_type_overseas' => ['Xero tax type for overseas clients (ZERORATEDOUTPUT = Zero Rated)', 'ZERORATEDOUTPUT'],
+    // v0.20.1: your own sending mailboxes on client accounts are not client mailboxes (not counted, not billed)
+    'management_mailboxes' => ['Management mailboxes, not billed — names before the @, comma-separated (* = any characters)', 'webmailer'],
+    'management_subdomains' => ['Mailboxes on a subdomain (e.g. x@mail.example.co.nz) are management, not billed (yes / no)', 'yes'],
 ];
 
 function cm_setting(PDO $pdo, string $k): string

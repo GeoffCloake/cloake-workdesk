@@ -2,6 +2,7 @@
 # cm-update — install a Cloake Workdesk release straight from GitHub (run on the server as cloakecrea).
 #   cm-update            list the releases available on GitHub and what is installed
 #   cm-update v0.15.0    fetch release/v0.15.0, build the package, dry-run, ask, then install
+#   cm-update v0.15.0 --yes   the same without the question
 # It only READS from GitHub (read-only deploy key). The install itself is deploy/install.sh,
 # exactly as with uploaded zips: database backup, migration, verify, automatic rollback on failure.
 set -euo pipefail
@@ -43,8 +44,15 @@ fi
 echo "Installed now: v$CUR    Release: $V (build $BUILD, commit ${COMMIT:0:7})"
 echo "---- Dry run (changes nothing) ----"
 cd "$OUT"
-bash deploy/install.sh --dry-run
+bash deploy/install.sh --dry-run </dev/null
 echo "-----------------------------------"
-read -r -p "Install $V now? Type y to install, anything else to stop: " ANSWER
-[ "$ANSWER" = "y" ] || { echo "Stopped. Nothing installed."; exit 0; }
+# v0.20.1: read the answer from the keyboard (not from anything piped in), ignore spaces/case; --yes skips the question
+if [ "${2:-}" = "--yes" ]; then ANSWER=y
+else
+  ANSWER=""
+  if [ -r /dev/tty ]; then read -r -p "Install $V now? Type y to install, anything else to stop: " ANSWER </dev/tty || ANSWER=""
+  else read -r -p "Install $V now? Type y to install, anything else to stop: " ANSWER || ANSWER=""; fi
+  ANSWER="$(printf '%s' "$ANSWER" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+fi
+[ "$ANSWER" = "y" ] || [ "$ANSWER" = "yes" ] || { echo "Stopped. Nothing installed. (To install without the question: cm-update $V --yes)"; exit 0; }
 bash deploy/install.sh

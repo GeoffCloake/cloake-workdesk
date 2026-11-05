@@ -1,3 +1,17 @@
+# Install v0.20.1 (build 20261105.4) — and how to undo it
+
+**What changes:** application files only. **No database change.**
+
+1. `su -s /bin/bash - cloakecrea`
+2. `cm-update v0.20.1` → the dry run → type `y` → `Verified: … v0.20.1 · build 20261105.4`. (If the question misbehaves again: `bash ~/cloake-manager/releases/cloake-workdesk-v0.20.1-build20261105.4/deploy/install.sh`.)
+3. **Refresh cm-update itself once** (it doesn't update itself):
+   `install -m 755 ~/cloake-manager/releases/cloake-workdesk-v0.20.1-build20261105.4/deploy/cm-update.sh ~/bin/cm-update`
+4. More… › **Billing settings** › *Management mailboxes*: add any other names you use besides `webmailer` (comma-separated; `*` = any characters). Subdomain mailboxes are already treated as management.
+
+**Undo:** `cm-update v0.20.0`.
+
+---
+
 # Install v0.20.0 (build 20261105.3) — and how to undo it
 
 **What changes:** application files only. **No database change.** Plus a one-off root step for the nightly server check.

@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $s = oneRow($pdo, 'SELECT * FROM services WHERE id=? FOR UPDATE', [$sid]);
             if (!$s) throw new InvalidArgumentException('A ticked service no longer exists. Reload the page.');
             $acct = cm_service_account($s, $inv); if (!$acct) continue;
-            $n = count(cm_account_mailboxes($s, $acct[1]));
+            $n = count(cm_service_mailboxes($pdo, $s, $acct[1])['client']);
             $ch = cm_changes($s, ['mailboxes' => $n]);
             if (!$ch) continue;
             $pdo->prepare('UPDATE services SET mailboxes=?, updated_at=NOW() WHERE id=?')->execute([$n, $sid]);
@@ -52,7 +52,7 @@ foreach ($svc as $s) {
     $acct = cm_service_account($s, $inv);
     if (!$acct) { if (!$s['is_internal']) $none[] = $s; continue; }
     $used[$acct[0]] = true;
-    $n = count(cm_account_mailboxes($s, $acct[1]));
+    $n = count(cm_service_mailboxes($pdo, $s, $acct[1])['client']);
     if (cm_has_plans($pdo) && $n !== (int)($s['mailboxes'] ?? 0)) $diff[] = [$s, $acct[0], $n];
     if (!empty($acct[1]['suspended']) && $s['billable'] && !$s['is_internal']) $susp[] = [$s, $acct[0]];
 }
@@ -63,12 +63,12 @@ $name = fn($s) => h($s['domain'] ?: $s['label'] ?: '—');
 
 <?php if ($diff): ?><form method="post" action="cpanel-check.php" class="form panel" data-testid="cpanel-diff"><input type="hidden" name="csrf" value="<?=h(m7csrf())?>"><h2 class="panel-title">Mailboxes differ</h2>
 <ul class="plan-list"><?php foreach ($diff as [$s, $u, $n]): ?><li data-service="<?=(int)$s['id']?>"><span class="pl-main"><label class="check"><input type="checkbox" name="sids[]" value="<?=(int)$s['id']?>" checked> <strong><a href="<?=h(route('service', ['id' => $s['id']]))?>"><?=$name($s)?></a></strong></label><small><?=h((string)$s['client_name'])?> · cPanel <?=h($u)?> · here <?=(int)($s['mailboxes'] ?? 0)?> → cPanel <?=$n?></small></span></li><?php endforeach; ?></ul>
-<div class="form-actions"><button type="submit" class="save">Update mailbox counts</button></div><p class="helper">Only the mailbox count is changed (it shows on the Xero line and in the list price). Prices are not changed. Undo is offered straight after.</p></form><?php endif; ?>
+<div class="form-actions"><button type="submit" class="save">Update mailbox counts</button></div><p class="helper">Counts leave out management mailboxes (Billing settings: “<?=h(cm_setting($pdo, 'management_mailboxes'))?>”<?=cm_setting($pdo, 'management_subdomains') !== 'no' ? ', and any on a subdomain' : ''?>). Only the mailbox count is changed (it shows on the Xero line and in the list price). Prices are not changed. Undo is offered straight after.</p></form><?php endif; ?>
 
 <?php if ($susp): ?><details class="panel" open data-testid="cpanel-suspended"><summary>Billed, but suspended on the server (<?=count($susp)?>)</summary><ul class="plan-list"><?php foreach ($susp as [$s, $u]): ?><li><span class="pl-main"><a href="<?=h(route('service', ['id' => $s['id']]))?>"><?=$name($s)?></a><small><?=h((string)$s['client_name'])?> · cPanel <?=h($u)?></small></span></li><?php endforeach; ?></ul></details><?php endif; ?>
 
 <?php if ($none): ?><details class="panel" data-testid="cpanel-none-list"><summary>No cPanel account found (<?=count($none)?>)</summary><ul class="plan-list"><?php foreach ($none as $s): ?><li><span class="pl-main"><a href="service-edit.php?id=<?=(int)$s['id']?>"><?=$name($s)?></a><small><?=h((string)$s['client_name'])?><?=$s['cpanel_username'] ? ' · username ' . h($s['cpanel_username']) . ' not on this server' : ' · no cPanel username'?></small></span></li><?php endforeach; ?></ul><p class="helper">Hosted elsewhere, or the username/domain differs — put the cPanel username on the service.</p></details><?php endif; ?>
 
-<?php if ($orphans): ?><details class="panel" data-testid="cpanel-orphans"><summary>cPanel accounts with no live service (<?=count($orphans)?>)</summary><ul class="plan-list"><?php foreach ($orphans as $u => $a): ?><li><span class="pl-main"><strong><?=h((string)$u)?></strong> <?=h((string)($a['domains'][0] ?? ''))?><small><?=h(implode(' · ', array_filter([!empty($a['package']) ? 'package ' . $a['package'] : '', count((array)($a['mailboxes'] ?? [])) . ' mailboxes', !empty($a['suspended']) ? 'suspended' : ''])))?></small></span></li><?php endforeach; ?></ul><p class="helper">Possibly not billed — or internal. Add a service for it, or ignore it if it's yours.</p></details><?php endif; ?>
+<?php if ($orphans): ?><details class="panel" data-testid="cpanel-orphans"><summary>cPanel accounts with no live service (<?=count($orphans)?>)</summary><ul class="plan-list"><?php foreach ($orphans as $u => $a): ?><li><span class="pl-main"><strong><?=h((string)$u)?></strong> <?=h((string)($a['domains'][0] ?? ''))?><small><?=h(implode(' · ', array_filter([!empty($a['package']) ? 'package ' . $a['package'] : '', count((array)($a['mailboxes'] ?? [])) . ' mailboxes (incl. management)', !empty($a['suspended']) ? 'suspended' : ''])))?></small></span></li><?php endforeach; ?></ul><p class="helper">Possibly not billed — or internal. Add a service for it, or ignore it if it's yours.</p></details><?php endif; ?>
 <?php if (!$diff && !$susp && !$none && !$orphans): ?><div class="success" role="status">Everything matches.</div><?php endif; ?>
 <?php cm_page_end('billing');
